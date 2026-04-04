@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-meal: #4CAF50;
+  --color-exercise: #FF7043;
+  --color-bg: #F5F5F5;
+  --color-text: #333333;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #F5F5F5; }
+::-webkit-scrollbar-thumb { background: #BDBDBD; border-radius: 3px; }
+
+@layer components {
+  .input {
+    @apply w-full border border-gray-200 rounded-xl px-4 py-3 text-sm
+           focus:outline-none focus:border-[#4CAF50] bg-white;
+  }
+}
