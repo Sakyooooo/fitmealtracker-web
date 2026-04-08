@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 const TABS = [
   { href: '/meal',     label: '食事',       icon: '🍽️'  },
@@ -13,6 +15,24 @@ const TABS = [
 
 export default function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then((res) => {
+      setEmail(res.data.user?.email ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setEmail(session?.user?.email ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push('/auth');
+    router.refresh();
+  }
 
   return (
     <>
@@ -43,6 +63,7 @@ export default function Navigation() {
           <span className="text-xl font-bold text-[#4CAF50]">FitMeal</span>
           <span className="text-xl font-bold text-gray-700">Tracker</span>
         </div>
+
         {TABS.map((tab) => {
           const active = pathname.startsWith(tab.href);
           return (
@@ -60,6 +81,23 @@ export default function Navigation() {
             </Link>
           );
         })}
+
+        {/* User info + logout (desktop only) */}
+        <div className="mt-auto px-4 pb-6 border-t border-gray-100 pt-4">
+          {email && (
+            <p className="text-xs text-gray-400 truncate mb-2 px-2" title={email}>
+              {email}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full py-2 text-sm text-gray-500 border border-gray-200 rounded-xl
+                       hover:bg-gray-50 transition-colors font-medium"
+          >
+            ログアウト
+          </button>
+        </div>
       </nav>
     </>
   );
