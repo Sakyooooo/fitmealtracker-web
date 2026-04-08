@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 type Mode = 'login' | 'signup';
@@ -22,7 +21,6 @@ function translateError(msg: string): string {
 }
 
 export default function AuthPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,17 +43,24 @@ export default function AuthPage() {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) { setError(translateError(error.message)); return; }
-        router.push('/meal');
-        router.refresh();
+        // ハードリロードでミドルウェアがセッションCookieを確実に読む
+        window.location.href = '/meal';
       } else {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) { setError(translateError(error.message)); return; }
+        // メール確認不要の場合はsignUpで即座にセッションが返る
         if (data.session) {
-          router.push('/meal');
-          router.refresh();
-        } else {
-          setInfo('確認メールを送信しました。メールボックスをご確認ください。');
+          window.location.href = '/meal';
+          return;
         }
+        // セッションがない場合でもsignInを試みる（確認無効設定でも稀にセッションが遅れる場合）
+        const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+        if (loginData.session) {
+          window.location.href = '/meal';
+          return;
+        }
+        // ここまで来た場合はSupabaseでメール確認が有効になっている
+        setInfo('確認メールを送信しました。メールボックスを確認後、ログインしてください。');
       }
     } finally {
       setLoading(false);

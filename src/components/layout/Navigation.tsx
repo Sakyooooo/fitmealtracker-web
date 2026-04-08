@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
@@ -15,7 +15,6 @@ const TABS = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,8 +29,7 @@ export default function Navigation() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
-    router.push('/auth');
-    router.refresh();
+    window.location.href = '/auth';
   }
 
   return (
