@@ -21,10 +21,11 @@ export default function Modal({ open, onClose, title, children }: Props) {
   return (
     <div
       className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       onClick={onClose}
     >
       <div
-        className="bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-2xl md:rounded-2xl shadow-xl"
+        className="bg-white w-full max-w-lg max-h-[80vh] md:max-h-[90vh] overflow-y-auto rounded-t-2xl md:rounded-2xl shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl md:rounded-t-2xl z-10">
@@ -36,7 +37,7 @@ export default function Modal({ open, onClose, title, children }: Props) {
             ×
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5 pb-8">{children}</div>
       </div>
     </div>
   );
