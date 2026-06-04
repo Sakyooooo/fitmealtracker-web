@@ -8,6 +8,7 @@ export type MealEntry = {
   category: MealCategory;
   date: string;      // "YYYY-MM-DD"
   note?: string;
+  photoId?: string;
   photoUri?: string;
   protein?: number;  // g
   fat?: number;      // g

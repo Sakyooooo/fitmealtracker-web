@@ -2,8 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 
 const TABS = [
   { href: '/meal',     label: '食事',       icon: '🍽️'  },
@@ -15,22 +13,6 @@ const TABS = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const [email, setEmail] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then((res) => {
-      setEmail(res.data.user?.email ?? null);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setEmail(session?.user?.email ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    window.location.href = '/auth';
-  }
 
   return (
     <>
@@ -80,21 +62,10 @@ export default function Navigation() {
           );
         })}
 
-        {/* User info + logout (desktop only) */}
-        <div className="mt-auto px-4 pb-6 border-t border-gray-100 pt-4">
-          {email && (
-            <p className="text-xs text-gray-400 truncate mb-2 px-2" title={email}>
-              {email}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="w-full py-2 text-sm text-gray-500 border border-gray-200 rounded-xl
-                       hover:bg-gray-50 transition-colors font-medium"
-          >
-            ログアウト
-          </button>
+        <div className="mt-auto px-6 pb-6 border-t border-gray-100 pt-4">
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Local MVP
+          </p>
         </div>
       </nav>
     </>

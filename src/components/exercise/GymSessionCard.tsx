@@ -67,7 +67,7 @@ export default function GymSessionCard({
         intervalRef.current = null;
       }
     };
-  }, [session?.status, session?.startedAt]);
+  }, [session?.durationSec, session?.status, session?.startedAt]);
 
   // ── State 1: No session ──────────────────────────────────────────────
   if (!session) {
