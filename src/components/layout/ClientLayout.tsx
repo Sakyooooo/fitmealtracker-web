@@ -3,7 +3,7 @@ import Navigation from './Navigation';
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <div className="max-w-2xl mx-auto pb-20 md:pb-0 md:ml-56">
+      <div className="max-w-2xl mx-auto pb-20 md:pb-0 md:ml-52">
         {children}
       </div>
       <Navigation />

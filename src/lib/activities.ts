@@ -4,17 +4,23 @@ export type ActivityRate = {
 };
 
 export const ACTIVITY_LIST: ActivityRate[] = [
-  { name: 'ジョギング',     kcalPerMin: 8.5  },
-  { name: 'ランニング',     kcalPerMin: 11.0 },
-  { name: 'ウォーキング',   kcalPerMin: 4.0  },
-  { name: 'サイクリング',   kcalPerMin: 7.0  },
-  { name: '水泳',           kcalPerMin: 9.0  },
-  { name: '筋トレ',         kcalPerMin: 5.5  },
-  { name: 'ストレッチ',     kcalPerMin: 2.5  },
-  { name: 'ヨガ',           kcalPerMin: 3.0  },
-  { name: '縄跳び',         kcalPerMin: 10.0 },
-  { name: 'ジムセッション', kcalPerMin: 6.0  },
-  { name: 'その他',         kcalPerMin: 5.0  },
+  { name: 'ベンチプレス',       kcalPerMin: 6.0  },
+  { name: 'デッドリフト',       kcalPerMin: 7.0  },
+  { name: 'スクワット',         kcalPerMin: 7.5  },
+  { name: 'ランニング',         kcalPerMin: 11.0 },
+  { name: 'クランチ',           kcalPerMin: 4.5  },
+  { name: 'レッグプレス',       kcalPerMin: 5.5  },
+  { name: 'プルアップ',         kcalPerMin: 8.0  },
+  { name: 'バイセップカール',   kcalPerMin: 4.0  },
+  { name: 'ダンベルフライ',     kcalPerMin: 5.0  },
+  { name: 'プランク',           kcalPerMin: 3.5  },
+  { name: 'トライセップディップ', kcalPerMin: 6.0 },
+  { name: 'ランジ',             kcalPerMin: 6.5  },
+  { name: 'ジョギング',         kcalPerMin: 8.5  },
+  { name: 'ウォーキング',       kcalPerMin: 4.0  },
+  { name: '水泳',               kcalPerMin: 9.0  },
+  { name: 'ジムセッション',     kcalPerMin: 6.0  },
+  { name: 'その他',             kcalPerMin: 5.0  },
 ];
 
 export const KNOWN_ACTIVITIES = ACTIVITY_LIST.map((a) => a.name);
@@ -25,9 +31,17 @@ export const ACTIVITY_RATES: Record<string, number> = Object.fromEntries(
 
 export const DEFAULT_ACTIVITY_RATE = 5.0;
 
+// 12 gym exercises shown in the session picker
+export const GYM_PRESETS = [
+  'ベンチプレス', 'デッドリフト', 'スクワット', 'ランニング',
+  'クランチ', 'レッグプレス', 'プルアップ', 'バイセップカール',
+  'ダンベルフライ', 'プランク', 'トライセップディップ', 'ランジ',
+];
+
+// All presets for the manual add modal
 export const DEFAULT_PRESETS = [
-  'ランニング', 'ウォーキング', '筋トレ',
-  '水泳', 'サイクリング', 'ヨガ', 'その他',
+  ...GYM_PRESETS,
+  'ジョギング', 'ウォーキング', '水泳', 'その他',
 ];
 
 export function estimateExerciseCalories(name: string, durationMinutes: number): number {

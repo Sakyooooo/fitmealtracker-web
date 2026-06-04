@@ -8,49 +8,49 @@ type Props = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  朝食: 'bg-orange-100 text-orange-700',
-  昼食: 'bg-blue-100 text-blue-700',
-  夕食: 'bg-amber-100 text-amber-800',
-  間食: 'bg-purple-100 text-purple-700',
+  朝食: 'text-orange-500',
+  昼食: 'text-blue-500',
+  夕食: 'text-amber-600',
+  間食: 'text-purple-500',
 };
 
 export default function MealCard({ meal, onDelete }: Props) {
-  const badgeClass = CATEGORY_COLORS[meal.category] ?? 'bg-gray-100 text-gray-600';
+  const catColor = CATEGORY_COLORS[meal.category] ?? 'text-gray-500';
 
   return (
-    <div className="bg-white rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
+    <div className="flex items-center gap-3 bg-white rounded-xl px-4 py-3.5 shadow-sm border-l-[3px] border-[#4CAF50]">
       {meal.photoUri && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={meal.photoUri}
           alt={meal.name}
-          className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+          className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
         />
       )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}>
-            {meal.category}
-          </span>
-          <span className="text-xs text-gray-400">{meal.time}</span>
-          {meal.date && <span className="text-xs text-gray-300">{meal.date}</span>}
-        </div>
-        <p className="text-sm font-semibold text-gray-800 truncate">{meal.name}</p>
+        <p className="text-sm font-black text-gray-900 tracking-tight truncate">{meal.name}</p>
+        <p className="text-xs text-gray-400 mt-0.5 font-medium">
+          <span className={`${catColor} font-bold`}>{meal.category}</span>
+          <span className="mx-1">·</span>
+          {meal.time}
+          {meal.date && <span className="ml-2 text-gray-300">{meal.date}</span>}
+        </p>
         {(meal.protein != null || meal.fat != null || meal.carbs != null) && (
-          <p className="text-xs text-gray-400 mt-0.5">
-            P:{meal.protein ?? '—'}g　F:{meal.fat ?? '—'}g　C:{meal.carbs ?? '—'}g
+          <p className="text-[10px] text-gray-400 mt-0.5">
+            P:{meal.protein ?? '—'}g · F:{meal.fat ?? '—'}g · C:{meal.carbs ?? '—'}g
           </p>
         )}
-        {meal.note && <p className="text-xs text-gray-400 truncate">{meal.note}</p>}
       </div>
-      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        <span className="text-lg font-bold text-[#4CAF50]">{meal.calories}</span>
-        <span className="text-xs text-gray-400">kcal</span>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="text-right">
+          <p className="text-base font-black text-[#4CAF50] leading-none">{meal.calories.toLocaleString()}</p>
+          <p className="text-[10px] text-gray-400 font-medium tracking-wide">KCAL</p>
+        </div>
         <button
           onClick={() => onDelete(meal.id)}
-          className="text-xs text-red-400 hover:text-red-600 transition-colors"
+          className="text-gray-200 hover:text-red-400 transition-colors text-lg leading-none"
         >
-          削除
+          ×
         </button>
       </div>
     </div>

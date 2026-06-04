@@ -9,26 +9,25 @@ type Props = {
 
 export default function ExerciseCard({ exercise, onDelete }: Props) {
   return (
-    <div className="bg-white rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm">
-      <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-xl flex-shrink-0">
-        🏃
-      </div>
+    <div className="flex items-center gap-4 bg-white rounded-xl px-4 py-3.5 shadow-sm border-l-[3px] border-[#FF7043]">
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800">{exercise.name}</p>
-        <p className="text-xs text-gray-400">
-          {exercise.durationMinutes}分
+        <p className="text-sm font-black text-gray-900 tracking-tight">{exercise.name}</p>
+        <p className="text-xs text-gray-400 mt-0.5 font-medium">
+          {exercise.durationMinutes} min
           {exercise.note ? ` · ${exercise.note}` : ''}
+          <span className="ml-2 text-gray-300">{exercise.date}</span>
         </p>
-        <p className="text-xs text-gray-300">{exercise.date}</p>
       </div>
-      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        <span className="text-lg font-bold text-[#FF7043]">{exercise.caloriesBurned}</span>
-        <span className="text-xs text-gray-400">kcal</span>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="text-right">
+          <p className="text-base font-black text-[#FF7043] leading-none">{exercise.caloriesBurned}</p>
+          <p className="text-[10px] text-gray-400 font-medium tracking-wide">KCAL</p>
+        </div>
         <button
           onClick={() => onDelete(exercise.id)}
-          className="text-xs text-red-400 hover:text-red-600 transition-colors"
+          className="text-gray-200 hover:text-red-400 transition-colors text-lg leading-none"
         >
-          削除
+          ×
         </button>
       </div>
     </div>

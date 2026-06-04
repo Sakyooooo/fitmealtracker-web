@@ -34,6 +34,8 @@ export type WeightEntry = {
   note?: string;
 };
 
+export type GymGoalType = 'calories' | 'time';
+
 export type AppSettings = {
   targetWeightKg?: number;
   targetIntakeCalories?: number;
@@ -42,6 +44,8 @@ export type AppSettings = {
   targetProtein?: number;
   targetFat?: number;
   targetCarbs?: number;
+  gymGoalType?: GymGoalType;
+  gymGoalValue?: number;
 };
 
 export type MealAnalysisResult = {
