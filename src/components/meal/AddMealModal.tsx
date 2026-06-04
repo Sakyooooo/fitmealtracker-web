@@ -9,7 +9,9 @@ import { analyzeWithGemini } from '@/lib/gemini';
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSave: (data: Omit<MealEntry, 'id'>) => void;
+  onSave: (
+    data: Omit<MealEntry, 'id' | 'photoUri' | 'photoId'> & { photoFile?: File | null },
+  ) => void;
 };
 
 const CATEGORIES: MealCategory[] = ['朝食', '昼食', '夕食', '間食'];
@@ -35,13 +37,12 @@ export default function AddMealModal({ open, onClose, onSave }: Props) {
   const [analyzeResult, setAnalyzeResult] = useState<MealAnalysisResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const hasGemini = !!process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
   function reset() {
     setName(''); setCalories(''); setTime(nowTime());
     setCategory('朝食'); setNote('');
     setProtein(''); setFat(''); setCarbs('');
     setShowPfc(false); setPhotoFile(null);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null); setAnalyzeResult(null);
   }
 
@@ -85,7 +86,7 @@ export default function AddMealModal({ open, onClose, onSave }: Props) {
       category,
       date: todayString(),
       note: note.trim() || undefined,
-      photoUri: photoPreview ?? undefined,
+      photoFile,
       protein: !isNaN(proteinVal) && proteinVal >= 0 ? proteinVal : undefined,
       fat: !isNaN(fatVal) && fatVal >= 0 ? fatVal : undefined,
       carbs: !isNaN(carbsVal) && carbsVal >= 0 ? carbsVal : undefined,
@@ -116,19 +117,17 @@ export default function AddMealModal({ open, onClose, onSave }: Props) {
               onClick={() => fileRef.current?.click()}
             />
             <p className="text-xs text-gray-400 text-center">タップで変更</p>
-            {hasGemini && (
-              <button
-                onClick={handleAnalyze}
-                disabled={analyzing}
-                className="w-full py-2.5 bg-[#4CAF50] text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {analyzing ? (
-                  <><span className="animate-spin">⏳</span> 解析中...</>
-                ) : (
-                  <>✨ 写真でカロリーを推定</>
-                )}
-              </button>
-            )}
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing}
+              className="w-full py-2.5 bg-[#4CAF50] text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {analyzing ? (
+                <><span className="animate-spin">⏳</span> 解析中...</>
+              ) : (
+                <>✨ 写真でカロリーを推定</>
+              )}
+            </button>
             {analyzeResult && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-1">
                 <p className="font-semibold">✅ 解析結果（参考値・自由に修正できます）</p>

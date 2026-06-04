@@ -3,13 +3,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MealEntry, ExerciseEntry, WeightEntry, AppSettings, GymSession } from '@/lib/types';
 import {
-  dbFetchMeals, dbInsertMeal, dbUpdateMeal, dbDeleteMeal,
-  dbFetchExercises, dbInsertExercise, dbUpdateExercise, dbDeleteExercise,
-  dbFetchWeights, dbInsertWeight, dbDeleteWeight,
-  dbFetchActiveGymSession, dbInsertGymSession, dbUpdateGymSession, dbDeleteGymSession,
-} from '@/lib/db';
-import { loadSettings, saveSettings } from '@/lib/storage';
+  fetchMeals,
+  insertMeal,
+  updateMeal as updateStoredMeal,
+  deleteMeal as deleteStoredMeal,
+  fetchExercises,
+  insertExercise,
+  updateExercise as updateStoredExercise,
+  deleteExercise as deleteStoredExercise,
+  fetchWeights,
+  insertWeight,
+  deleteWeight as deleteStoredWeight,
+  fetchActiveGymSession,
+  insertGymSession,
+  updateGymSession,
+  deleteGymSession,
+  loadSettings,
+  saveSettings,
+} from '@/lib/localRepository';
 import { todayString } from '@/lib/stats';
+
+type NewMealData = Omit<MealEntry, 'id' | 'date' | 'photoUri' | 'photoId'> & {
+  date?: string;
+  photoFile?: File | null;
+};
 
 export function useAppData() {
   const [meals, setMeals] = useState<MealEntry[]>([]);
@@ -22,10 +39,10 @@ export function useAppData() {
   const loadAll = useCallback(async () => {
     setHydrated(false);
     const [m, e, w, gs] = await Promise.all([
-      dbFetchMeals(),
-      dbFetchExercises(),
-      dbFetchWeights(),
-      dbFetchActiveGymSession(),
+      fetchMeals(),
+      fetchExercises(),
+      fetchWeights(),
+      fetchActiveGymSession(),
     ]);
     setMeals(m);
     setExercises(e);
@@ -39,59 +56,73 @@ export function useAppData() {
     loadAll();
   }, [loadAll]);
 
-  // ── Meals ──────────────────────────────────────────────────────────────────
-  const addMeal = useCallback(async (
-    data: Omit<MealEntry, 'id' | 'date'> & { date?: string },
-  ) => {
-    const saved = await dbInsertMeal({ ...data, date: data.date ?? todayString() });
-    if (saved) setMeals((prev) => [saved, ...prev]);
-    else alert('食事の保存に失敗しました。もう一度お試しください。');
+  const addMeal = useCallback(async (data: NewMealData) => {
+    try {
+      const saved = await insertMeal({ ...data, date: data.date ?? todayString() });
+      setMeals((prev) => [saved, ...prev]);
+    } catch (error) {
+      console.error('[local] insert meal failed', error);
+      alert('食事の保存に失敗しました。もう一度お試しください。');
+    }
   }, []);
 
   const updateMeal = useCallback(async (updated: MealEntry) => {
-    const saved = await dbUpdateMeal(updated);
-    if (saved) setMeals((prev) => prev.map((m) => (m.id === saved.id ? saved : m)));
-    else alert('食事の更新に失敗しました。');
+    try {
+      const saved = await updateStoredMeal(updated);
+      setMeals((prev) => prev.map((m) => (m.id === saved.id ? saved : m)));
+    } catch (error) {
+      console.error('[local] update meal failed', error);
+      alert('食事の更新に失敗しました。');
+    }
   }, []);
 
   const deleteMeal = useCallback(async (id: string) => {
     setMeals((prev) => prev.filter((m) => m.id !== id));
-    await dbDeleteMeal(id);
+    await deleteStoredMeal(id);
   }, []);
 
-  // ── Exercises ──────────────────────────────────────────────────────────────
   const addExercise = useCallback(async (
     data: Omit<ExerciseEntry, 'id' | 'date'> & { date?: string },
   ) => {
-    const saved = await dbInsertExercise({ ...data, date: data.date ?? todayString() });
-    if (saved) setExercises((prev) => [saved, ...prev]);
-    else alert('運動の保存に失敗しました。もう一度お試しください。');
+    try {
+      const saved = await insertExercise({ ...data, date: data.date ?? todayString() });
+      setExercises((prev) => [saved, ...prev]);
+    } catch (error) {
+      console.error('[local] insert exercise failed', error);
+      alert('運動の保存に失敗しました。もう一度お試しください。');
+    }
   }, []);
 
   const updateExercise = useCallback(async (updated: ExerciseEntry) => {
-    const saved = await dbUpdateExercise(updated);
-    if (saved) setExercises((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
-    else alert('運動の更新に失敗しました。');
+    try {
+      const saved = await updateStoredExercise(updated);
+      setExercises((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
+    } catch (error) {
+      console.error('[local] update exercise failed', error);
+      alert('運動の更新に失敗しました。');
+    }
   }, []);
 
   const deleteExercise = useCallback(async (id: string) => {
     setExercises((prev) => prev.filter((e) => e.id !== id));
-    await dbDeleteExercise(id);
+    await deleteStoredExercise(id);
   }, []);
 
-  // ── Weights ────────────────────────────────────────────────────────────────
   const addWeight = useCallback(async (data: Omit<WeightEntry, 'id'>) => {
-    const saved = await dbInsertWeight(data);
-    if (saved) setWeights((prev) => [saved, ...prev]);
-    else alert('体重の保存に失敗しました。もう一度お試しください。');
+    try {
+      const saved = await insertWeight(data);
+      setWeights((prev) => [saved, ...prev]);
+    } catch (error) {
+      console.error('[local] insert weight failed', error);
+      alert('体重の保存に失敗しました。もう一度お試しください。');
+    }
   }, []);
 
   const deleteWeight = useCallback(async (id: string) => {
     setWeights((prev) => prev.filter((w) => w.id !== id));
-    await dbDeleteWeight(id);
+    await deleteStoredWeight(id);
   }, []);
 
-  // ── Settings (localStorage のみ) ───────────────────────────────────────────
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
@@ -100,11 +131,14 @@ export function useAppData() {
     });
   }, []);
 
-  // ── Gym Session ────────────────────────────────────────────────────────────
   const startGym = useCallback(async () => {
-    const saved = await dbInsertGymSession(new Date().toISOString());
-    if (saved) setGymSession(saved);
-    else alert('ジムセッションの開始に失敗しました。');
+    try {
+      const saved = await insertGymSession(new Date().toISOString());
+      setGymSession(saved);
+    } catch (error) {
+      console.error('[local] start gym failed', error);
+      alert('ジムセッションの開始に失敗しました。');
+    }
   }, []);
 
   const endGym = useCallback(() => {
@@ -115,14 +149,14 @@ export function useAppData() {
         (new Date(endedAt).getTime() - new Date(prev.startedAt).getTime()) / 1000,
       );
       const next: GymSession = { ...prev, endedAt, durationSec, status: 'completed' };
-      dbUpdateGymSession(next).catch((e) => console.error('endGym sync failed', e));
+      updateGymSession(next).catch((e) => console.error('endGym sync failed', e));
       return next;
     });
   }, []);
 
   const cancelGym = useCallback(() => {
     setGymSession((prev) => {
-      if (prev) dbDeleteGymSession(prev.id).catch(console.error);
+      if (prev) deleteGymSession(prev.id).catch(console.error);
       return null;
     });
   }, []);
@@ -131,7 +165,7 @@ export function useAppData() {
     setGymSession((prev) => {
       if (!prev) return prev;
       const next: GymSession = { ...prev, memo };
-      dbUpdateGymSession(next).catch((e) => console.error('memo sync failed', e));
+      updateGymSession(next).catch((e) => console.error('memo sync failed', e));
       return next;
     });
   }, []);
@@ -148,12 +182,10 @@ export function useAppData() {
         note: prev.memo ?? '',
         type: 'gymSession',
       };
-      dbInsertExercise(exerciseData)
-        .then((saved) => {
-          if (saved) setExercises((ex) => [saved, ...ex]);
-        })
+      insertExercise(exerciseData)
+        .then((saved) => setExercises((ex) => [saved, ...ex]))
         .catch(console.error);
-      dbDeleteGymSession(prev.id).catch(console.error);
+      deleteGymSession(prev.id).catch(console.error);
       return null;
     });
   }, []);

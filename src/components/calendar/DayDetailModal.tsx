@@ -13,7 +13,7 @@ type Props = {
 };
 
 export default function DayDetailModal({ open, onClose, date, meals, exercises }: Props) {
-  const [year, month, day] = date.split('-').map(Number);
+  const [, month, day] = date.split('-').map(Number);
   const dayMeals = getMealsByDate(meals, date);
   const dayExercises = getExercisesByDate(exercises, date);
 
