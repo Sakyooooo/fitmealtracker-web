@@ -50,34 +50,43 @@ function randomCode(): string {
 export async function syncUserToSupabase(userId: string): Promise<string | null> {
   if (!supabaseEnabled || !supabase) return null;
 
-  // 既存チェック
-  const { data: existing } = await supabase
-    .from('users')
-    .select('friend_code')
-    .eq('id', userId)
-    .maybeSingle();
+  try {
+    // 既存チェック
+    const { data: existing, error: selectErr } = await supabase
+      .from('users')
+      .select('friend_code')
+      .eq('id', userId)
+      .maybeSingle();
 
-  if (existing) return existing.friend_code as string;
-
-  // 新規登録：重複しないコードを最大3回試みる
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const code = randomCode();
-    const { error } = await supabase.from('users').insert({
-      id: userId,
-      friend_code: code,
-      display_name: null,
-    });
-
-    if (!error) return code;
-    // UNIQUE 制約違反（23505）以外は即エラー
-    if ((error as { code?: string }).code !== '23505') {
-      console.error('[identity] syncUserToSupabase:', error.message);
+    if (selectErr) {
+      console.error('[identity] syncUserToSupabase (select):', selectErr.message);
       return null;
     }
-  }
+    if (existing) return existing.friend_code as string;
 
-  console.error('[identity] フレンドコードの生成に3回失敗しました');
-  return null;
+    // 新規登録：重複しないコードを最大3回試みる
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = randomCode();
+      const { error } = await supabase.from('users').insert({
+        id: userId,
+        friend_code: code,
+        display_name: null,
+      });
+
+      if (!error) return code;
+      // UNIQUE 制約違反（23505）以外は即エラー
+      if ((error as { code?: string }).code !== '23505') {
+        console.error('[identity] syncUserToSupabase (insert):', error.message);
+        return null;
+      }
+    }
+
+    console.error('[identity] フレンドコードの生成に3回失敗しました');
+    return null;
+  } catch (err) {
+    console.error('[identity] syncUserToSupabase (network):', err);
+    return null;
+  }
 }
 
 /**

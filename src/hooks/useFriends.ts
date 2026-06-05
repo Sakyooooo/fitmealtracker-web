@@ -10,6 +10,8 @@ type UseFriendsReturn = {
   enabled: boolean;
   /** 初期化中 */
   loading: boolean;
+  /** Supabase 接続エラー（設定済みだが到達不可） */
+  connectionError: boolean;
   /** 自分の user_id */
   userId: string | null;
   /** 自分のフレンドコード（例: FMT-7X3K） */
@@ -36,6 +38,7 @@ type UseFriendsReturn = {
 
 export function useFriends(): UseFriendsReturn {
   const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [friendCode, setFriendCode] = useState<string | null>(null);
   const [friends, setFriends] = useState<Friendship[]>([]);
@@ -98,9 +101,13 @@ export function useFriends(): UseFriendsReturn {
       setUserId(uid);
 
       const code = await syncUserToSupabase(uid);
-      setFriendCode(code);
-
-      await loadFriendships(uid);
+      if (code === null) {
+        // Supabase 設定済みだが接続失敗（テーブル未作成 or ネットワークエラー）
+        setConnectionError(true);
+      } else {
+        setFriendCode(code);
+        await loadFriendships(uid);
+      }
       setLoading(false);
     })();
   }, [loadFriendships]);
@@ -198,6 +205,7 @@ export function useFriends(): UseFriendsReturn {
   return {
     enabled: supabaseEnabled,
     loading,
+    connectionError,
     userId,
     friendCode,
     friends,
