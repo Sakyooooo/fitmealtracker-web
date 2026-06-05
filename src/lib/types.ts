@@ -87,6 +87,46 @@ export type Friendship = {
   friend: FriendUser;   // 相手側のユーザー情報
 };
 
+// ── Timeline / Reactions ──────────────────────────────────────────────────────
+
+export type ReactionEmoji = '💪' | '🔥' | '👍' | '🎉';
+
+export type Reaction = {
+  id: string;
+  from_user_id: string;
+  record_id: string;
+  record_type: 'meal' | 'exercise';
+  emoji: ReactionEmoji;
+  created_at: string;
+};
+
+/** タイムラインの1アイテム（meal or exercise） */
+export type TimelineItem = {
+  id: string;
+  type: 'meal' | 'exercise';
+  user_id: string;
+  display_name: string | null;
+  friend_code: string;
+  // 食事
+  name: string;
+  calories: number;
+  date: string;
+  // 食事のみ
+  category?: string;
+  protein?: number | null;
+  fat?: number | null;
+  carbs?: number | null;
+  // 運動のみ
+  duration_minutes?: number;
+  exercise_type?: string;
+  // 共通
+  note?: string | null;
+  created_at: string;
+  // リアクション
+  reactions: Reaction[];
+  my_reaction: ReactionEmoji | null;
+};
+
 export type GymSessionStatus = 'active' | 'completed' | 'canceled';
 
 export type GymSession = {

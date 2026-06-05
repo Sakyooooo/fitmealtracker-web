@@ -47,7 +47,9 @@ export default function MealCard({ meal, onDelete }: Props) {
           <p className="text-[10px] text-gray-400 font-medium tracking-wide">KCAL</p>
         </div>
         <button
-          onClick={() => onDelete(meal.id)}
+          onClick={() => {
+            if (window.confirm(`「${meal.name}」を削除しますか？`)) onDelete(meal.id);
+          }}
           className="text-gray-200 hover:text-red-400 transition-colors text-lg leading-none"
         >
           ×

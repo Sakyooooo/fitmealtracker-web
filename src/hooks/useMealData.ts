@@ -8,6 +8,7 @@ import {
   updateMeal as updateStoredMeal,
   deleteMeal as deleteStoredMeal,
 } from '@/lib/localRepository';
+import { sbUpsertMeal, sbDeleteMeal } from '@/lib/supabaseRepository';
 import { todayString } from '@/lib/stats';
 
 type NewMealData = Omit<MealEntry, 'id' | 'date' | 'photoUri' | 'photoId'> & {
@@ -44,6 +45,8 @@ export function useMealData() {
       const saved = await insertMeal({ ...data, date: data.date ?? todayString() });
       if (saved.photoUri) photoUrlsRef.current.push(saved.photoUri);
       setMeals((prev) => [saved, ...prev]);
+      // Supabase に非同期で同期（失敗してもローカルには保存済み）
+      sbUpsertMeal(saved).catch(console.error);
     } catch (error) {
       console.error('[useMealData] addMeal', error);
       alert(error instanceof Error ? error.message : '食事の保存に失敗しました。');
@@ -54,6 +57,7 @@ export function useMealData() {
     try {
       const saved = await updateStoredMeal(updated);
       setMeals((prev) => prev.map((m) => (m.id === saved.id ? saved : m)));
+      sbUpsertMeal(saved).catch(console.error);
     } catch (error) {
       console.error('[useMealData] updateMeal', error);
       alert('食事の更新に失敗しました。');
@@ -63,6 +67,7 @@ export function useMealData() {
   const deleteMeal = useCallback(async (id: string) => {
     setMeals((prev) => prev.filter((m) => m.id !== id));
     await deleteStoredMeal(id);
+    sbDeleteMeal(id).catch(console.error);
   }, []);
 
   return { meals, hydrated, addMeal, updateMeal, deleteMeal };

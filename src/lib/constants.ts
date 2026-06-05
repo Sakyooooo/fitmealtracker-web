@@ -17,6 +17,7 @@ export const TIMER_FONT_SIZE   = 'clamp(64px, 20vw, 108px)' as const;
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 export const STORAGE_KEY_DATA_TAB = 'fmt_data_tab';
-export const STORAGE_KEY_USER_ID      = 'fmt_user_id';
-export const STORAGE_KEY_FRIEND_CODE  = 'fmt_friend_code';
-export const STORAGE_KEY_DISPLAY_NAME = 'fmt_display_name';
+export const STORAGE_KEY_USER_ID        = 'fmt_user_id';
+export const STORAGE_KEY_FRIEND_CODE    = 'fmt_friend_code';
+export const STORAGE_KEY_DISPLAY_NAME   = 'fmt_display_name';
+export const STORAGE_KEY_MIGRATION_DONE = 'fmt_migration_done';

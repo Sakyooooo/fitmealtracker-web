@@ -6,6 +6,8 @@ import { MealCategory, MealEntry, MealAnalysisResult } from '@/lib/types';
 import { todayString } from '@/lib/stats';
 import { analyzeWithGemini } from '@/lib/gemini';
 
+type Mode = 'quick' | 'detail';
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -24,8 +26,13 @@ function nowTime(): string {
 }
 
 export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, initialAnalysis }: Props) {
+  // ── モード ────────────────────────────────────────────────────────────────────
+  const [mode, setMode] = useState<Mode>('quick');
+
+  // ── フォーム状態 ──────────────────────────────────────────────────────────────
   const [name, setName] = useState('');
   const [calories, setCalories] = useState('');
+  const [date, setDate] = useState(todayString);
   const [time, setTime] = useState(nowTime);
   const [category, setCategory] = useState<MealCategory>('朝食');
   const [note, setNote] = useState('');
@@ -39,25 +46,36 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   const [analyzeResult, setAnalyzeResult] = useState<MealAnalysisResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── バリデーションエラー ──────────────────────────────────────────────────────
+  const [nameError, setNameError] = useState('');
+  const [calError, setCalError] = useState('');
+
   function reset() {
-    setName(''); setCalories(''); setTime(nowTime());
+    setMode('quick');
+    setName(''); setCalories(''); setDate(todayString()); setTime(nowTime());
     setCategory('朝食'); setNote('');
     setProtein(''); setFat(''); setCarbs('');
     setShowPfc(false); setPhotoFile(null);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null); setAnalyzeResult(null);
+    setNameError(''); setCalError('');
   }
 
   function handleClose() { reset(); onClose(); }
 
-  // initialPhotoFile / initialAnalysis が渡されたとき（カメラ即解析）にフォームを補完する
+  // カメラ即解析から渡された初期値を補完する
   useEffect(() => {
     if (!open) return;
     if (initialPhotoFile) {
       setPhotoFile(initialPhotoFile);
       setPhotoPreview(URL.createObjectURL(initialPhotoFile));
+      setMode('detail'); // 写真付きは詳細モードで開く
     }
     if (initialAnalysis) {
+      // PFC データがある場合は詳細モードで開く（クイックモードには PFC フィールドがないため）
+      if (initialAnalysis.protein !== null || initialAnalysis.fat !== null || initialAnalysis.carbs !== null) {
+        setMode('detail');
+      }
       setAnalyzeResult(initialAnalysis);
       if (initialAnalysis.estimatedCalories !== null) setCalories(String(initialAnalysis.estimatedCalories));
       if (initialAnalysis.dishName) setName(initialAnalysis.dishName);
@@ -93,9 +111,13 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   }
 
   function handleSave() {
-    if (!name.trim()) { alert('食事名を入力してください'); return; }
+    // インラインバリデーション
+    let valid = true;
+    if (!name.trim()) { setNameError('食事名を入力してください'); valid = false; } else setNameError('');
     const cal = parseInt(calories, 10);
-    if (isNaN(cal) || cal < 0) { alert('カロリーを正しく入力してください'); return; }
+    if (isNaN(cal) || cal < 0) { setCalError('0以上の数値を入力してください'); valid = false; } else setCalError('');
+    if (!valid) return;
+
     const proteinVal = parseFloat(protein);
     const fatVal = parseFloat(fat);
     const carbsVal = parseFloat(carbs);
@@ -104,7 +126,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
       calories: cal,
       time,
       category,
-      date: todayString(),
+      date,
       note: note.trim() || undefined,
       photoFile,
       protein: !isNaN(proteinVal) && proteinVal >= 0 ? proteinVal : undefined,
@@ -117,164 +139,232 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
 
   return (
     <Modal open={open} onClose={handleClose} title="食事を追加">
-      {/* Photo */}
-      <div className="mb-4">
-        <label className="text-sm font-semibold text-gray-600 block mb-2">写真（任意）</label>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handlePhotoChange}
-        />
-        {photoPreview ? (
-          <div className="space-y-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photoPreview}
-              alt="preview"
-              className="w-full h-40 object-cover rounded-xl cursor-pointer"
-              onClick={() => fileRef.current?.click()}
-            />
-            <p className="text-xs text-gray-400 text-center">タップで変更</p>
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              className="w-full py-2.5 bg-[#4CAF50] text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {analyzing ? (
-                <><span className="animate-spin">⏳</span> 解析中...</>
-              ) : (
-                <>✨ 写真でカロリーを推定</>
-              )}
-            </button>
-            {analyzeResult && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-1">
-                <p className="font-semibold">✅ 解析結果（参考値・自由に修正できます）</p>
-                {analyzeResult.confidence !== null && (
-                  <p>信頼度: {Math.round(analyzeResult.confidence * 100)}%</p>
-                )}
-                {analyzeResult.notes && <p>{analyzeResult.notes}</p>}
-              </div>
-            )}
-          </div>
-        ) : (
+
+      {/* ── モード切り替えタブ ── */}
+      <div className="flex bg-gray-100 rounded-xl p-1 mb-5">
+        {(['quick', 'detail'] as Mode[]).map((m) => (
           <button
-            onClick={() => fileRef.current?.click()}
-            className="w-full border-2 border-dashed border-gray-200 rounded-xl py-6 flex flex-col items-center gap-2 text-gray-400 hover:border-[#4CAF50] hover:text-[#4CAF50] transition-colors"
+            key={m}
+            type="button"
+            onClick={() => setMode(m)}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+              mode === m ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+            }`}
           >
-            <span className="text-3xl">📷</span>
-            <span className="text-sm">写真を選択</span>
+            {m === 'quick' ? '⚡ クイック' : '✏️ 詳細'}
           </button>
-        )}
+        ))}
       </div>
 
-      <Field label="食事名">
-        <input
-          className="input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="例: サラダチキン・野菜スープ"
-          maxLength={60}
-        />
-      </Field>
+      {/* ── クイックモード ── */}
+      {mode === 'quick' && (
+        <>
+          <Field label="食事名" error={nameError}>
+            <input
+              className={`input ${nameError ? 'border-red-400 focus:border-red-400' : ''}`}
+              value={name}
+              onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }}
+              placeholder="例: サラダチキン・牛丼"
+              maxLength={60}
+              autoFocus
+            />
+          </Field>
 
-      <Field label="カロリー（kcal）">
-        <input
-          className="input"
-          type="number"
-          value={calories}
-          onChange={(e) => setCalories(e.target.value)}
-          placeholder="例: 380"
-          min={0}
-        />
-      </Field>
+          <Field label="カロリー（kcal）" error={calError}>
+            <input
+              className={`input ${calError ? 'border-red-400 focus:border-red-400' : ''}`}
+              type="number"
+              value={calories}
+              onChange={(e) => { setCalories(e.target.value); setCalError(''); }}
+              placeholder="例: 380"
+              min={0}
+            />
+          </Field>
 
-      <Field label="時刻">
-        <input
-          className="input"
-          type="time"
-          value={time}
-          onChange={(e) => setTime(e.target.value)}
-        />
-      </Field>
-
-      <Field label="区分">
-        <div className="flex gap-2 flex-wrap">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${
-                category === cat
-                  ? 'bg-[#4CAF50] border-[#4CAF50] text-white'
-                  : 'border-[#4CAF50] text-[#4CAF50] hover:bg-green-50'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {/* PFC toggle */}
-      <button
-        type="button"
-        onClick={() => setShowPfc((v) => !v)}
-        className="flex items-center justify-between w-full py-2 border-b border-gray-100 mb-3 text-sm font-semibold text-[#4CAF50]"
-      >
-        <span>栄養素 PFC（任意）</span>
-        <span>{showPfc ? '▲' : '▼'}</span>
-      </button>
-      {showPfc && (
-        <div className="grid grid-cols-3 gap-2 mb-4">
-          {[
-            { label: '🟦 タンパク質 (g)', val: protein, set: setProtein },
-            { label: '🟨 脂質 (g)',       val: fat,     set: setFat     },
-            { label: '🟩 炭水化物 (g)',   val: carbs,   set: setCarbs   },
-          ].map(({ label, val, set }) => (
-            <div key={label}>
-              <label className="text-xs text-gray-400 block mb-1">{label}</label>
-              <input
-                className="input text-center px-2"
-                type="number"
-                value={val}
-                onChange={(e) => set(e.target.value)}
-                placeholder="0"
-                min={0}
-              />
-            </div>
-          ))}
-        </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="w-full mt-2 py-4 bg-[#4CAF50] text-white font-black rounded-2xl text-base tracking-wide hover:bg-[#43A047] transition-colors active:scale-95"
+          >
+            保存する
+          </button>
+          <p className="text-center text-xs text-gray-400 mt-3">
+            時刻・区分・PFCを設定する場合は「✏️ 詳細」タブへ
+          </p>
+        </>
       )}
 
-      <Field label="メモ（任意）">
-        <textarea
-          className="input resize-none"
-          rows={2}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="例: 外食・コンビニ など"
-        />
-      </Field>
+      {/* ── 詳細モード ── */}
+      {mode === 'detail' && (
+        <>
+          {/* Photo */}
+          <div className="mb-4">
+            <label className="text-sm font-semibold text-gray-600 block mb-2">写真（任意）</label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+            {photoPreview ? (
+              <div className="space-y-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photoPreview}
+                  alt="preview"
+                  className="w-full h-40 object-cover rounded-xl cursor-pointer"
+                  onClick={() => fileRef.current?.click()}
+                />
+                <p className="text-xs text-gray-400 text-center">タップで変更</p>
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analyzing}
+                  className="w-full py-2.5 bg-[#4CAF50] text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {analyzing ? <><span className="animate-spin">⏳</span> 解析中...</> : <>✨ 写真でカロリーを推定</>}
+                </button>
+                {analyzeResult && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-1">
+                    <p className="font-semibold">✅ 解析結果（参考値・自由に修正できます）</p>
+                    {analyzeResult.confidence !== null && (
+                      <p>信頼度: {Math.round(analyzeResult.confidence * 100)}%</p>
+                    )}
+                    {analyzeResult.notes && <p>{analyzeResult.notes}</p>}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full border-2 border-dashed border-gray-200 rounded-xl py-6 flex flex-col items-center gap-2 text-gray-400 hover:border-[#4CAF50] hover:text-[#4CAF50] transition-colors"
+              >
+                <span className="text-3xl">📷</span>
+                <span className="text-sm">写真を選択</span>
+              </button>
+            )}
+          </div>
 
-      <button
-        type="button"
-        onClick={handleSave}
-        className="w-full mt-4 py-3 bg-[#4CAF50] text-white font-bold rounded-xl text-sm hover:bg-[#43A047] transition-colors"
-      >
-        保存する
-      </button>
+          <Field label="食事名" error={nameError}>
+            <input
+              className={`input ${nameError ? 'border-red-400 focus:border-red-400' : ''}`}
+              value={name}
+              onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }}
+              placeholder="例: サラダチキン・野菜スープ"
+              maxLength={60}
+            />
+          </Field>
+
+          <Field label="カロリー（kcal）" error={calError}>
+            <input
+              className={`input ${calError ? 'border-red-400 focus:border-red-400' : ''}`}
+              type="number"
+              value={calories}
+              onChange={(e) => { setCalories(e.target.value); setCalError(''); }}
+              placeholder="例: 380"
+              min={0}
+            />
+          </Field>
+
+          {/* 日付（過去日・未来日への変更対応） */}
+          <Field label="日付">
+            <input
+              className="input"
+              type="date"
+              value={date}
+              max={todayString()}
+              onChange={(e) => setDate(e.target.value || todayString())}
+            />
+          </Field>
+
+          <Field label="時刻">
+            <input
+              className="input"
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+            />
+          </Field>
+
+          <Field label="区分">
+            <div className="flex gap-2 flex-wrap">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setCategory(cat)}
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium border-2 transition-colors ${
+                    category === cat
+                      ? 'bg-[#4CAF50] border-[#4CAF50] text-white'
+                      : 'border-[#4CAF50] text-[#4CAF50] hover:bg-green-50'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* PFC toggle */}
+          <button
+            type="button"
+            onClick={() => setShowPfc((v) => !v)}
+            className="flex items-center justify-between w-full py-2 border-b border-gray-100 mb-3 text-sm font-semibold text-[#4CAF50]"
+          >
+            <span>栄養素 PFC（任意）</span>
+            <span>{showPfc ? '▲' : '▼'}</span>
+          </button>
+          {showPfc && (
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[
+                { label: '🟦 タンパク質 (g)', val: protein, set: setProtein },
+                { label: '🟨 脂質 (g)',       val: fat,     set: setFat     },
+                { label: '🟩 炭水化物 (g)',   val: carbs,   set: setCarbs   },
+              ].map(({ label, val, set }) => (
+                <div key={label}>
+                  <label className="text-xs text-gray-400 block mb-1">{label}</label>
+                  <input
+                    className="input text-center px-2"
+                    type="number"
+                    value={val}
+                    onChange={(e) => set(e.target.value)}
+                    placeholder="0"
+                    min={0}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Field label="メモ（任意）">
+            <textarea
+              className="input resize-none"
+              rows={2}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="例: 外食・コンビニ など"
+            />
+          </Field>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            className="w-full mt-4 py-3 bg-[#4CAF50] text-white font-bold rounded-xl text-sm hover:bg-[#43A047] transition-colors"
+          >
+            保存する
+          </button>
+        </>
+      )}
     </Modal>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div className="mb-4">
       <label className="text-sm font-semibold text-gray-600 block mb-1.5">{label}</label>
       {children}
+      {error && <p className="text-xs text-red-500 mt-1 font-medium">{error}</p>}
     </div>
   );
 }
