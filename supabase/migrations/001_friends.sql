@@ -23,17 +23,18 @@ CREATE TABLE IF NOT EXISTS friendships (
                            CHECK (status IN ('pending', 'accepted', 'blocked')),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  -- 同じ組み合わせは1件のみ（順序を問わず）
-  CONSTRAINT unique_friendship
-    UNIQUE (
-      LEAST(requester_id::text, receiver_id::text),
-      GREATEST(requester_id::text, receiver_id::text)
-    ),
-
   -- 自分自身へのフレンド申請を禁止
   CONSTRAINT no_self_friendship
     CHECK (requester_id <> receiver_id)
 );
+
+-- 同じ組み合わせは1件のみ（A→B と B→A を同一視）
+-- UNIQUE 制約では関数式が使えないため CREATE UNIQUE INDEX で代替
+CREATE UNIQUE INDEX IF NOT EXISTS unique_friendship_idx
+  ON friendships (
+    LEAST(requester_id::text, receiver_id::text),
+    GREATEST(requester_id::text, receiver_id::text)
+  );
 
 -- インデックス
 CREATE INDEX IF NOT EXISTS friendships_requester_idx ON friendships (requester_id);
