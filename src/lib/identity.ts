@@ -1,5 +1,9 @@
 import { supabase, supabaseEnabled } from './supabase';
-import { STORAGE_KEY_USER_ID } from './constants';
+import {
+  STORAGE_KEY_USER_ID,
+  STORAGE_KEY_FRIEND_CODE,
+  STORAGE_KEY_DISPLAY_NAME,
+} from './constants';
 
 // ── UUID ──────────────────────────────────────────────────────────────────────
 
@@ -102,4 +106,68 @@ export async function getMyFriendCode(userId: string): Promise<string | null> {
     .maybeSingle();
 
   return (data?.friend_code as string) ?? null;
+}
+
+// ── localStorage キャッシュ ────────────────────────────────────────────────────
+
+/** フレンドコードをキャッシュに書く */
+export function cacheFriendCode(code: string): void {
+  try { localStorage.setItem(STORAGE_KEY_FRIEND_CODE, code); } catch { /* quota */ }
+}
+
+/** キャッシュからフレンドコードを読む（未設定なら null） */
+export function getCachedFriendCode(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(STORAGE_KEY_FRIEND_CODE);
+}
+
+/** 表示名をキャッシュに書く */
+export function cacheDisplayName(name: string): void {
+  try { localStorage.setItem(STORAGE_KEY_DISPLAY_NAME, name); } catch { /* quota */ }
+}
+
+/** キャッシュから表示名を読む（未設定なら null） */
+export function getCachedDisplayName(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(STORAGE_KEY_DISPLAY_NAME);
+}
+
+// ── ニックネーム更新 ───────────────────────────────────────────────────────────
+
+/**
+ * Supabase の users テーブルの display_name を更新し、キャッシュにも書く。
+ * 空文字が渡された場合は NULL にリセットする。
+ */
+export async function updateDisplayName(
+  userId: string,
+  name: string,
+): Promise<boolean> {
+  if (!supabaseEnabled || !supabase) return false;
+
+  const trimmed = name.trim();
+  const value = trimmed === '' ? null : trimmed;
+
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({ display_name: value })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('[identity] updateDisplayName:', error.message);
+      return false;
+    }
+
+    // キャッシュ更新（null なら削除）
+    if (value) {
+      cacheDisplayName(value);
+    } else {
+      try { localStorage.removeItem(STORAGE_KEY_DISPLAY_NAME); } catch { /* quota */ }
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[identity] updateDisplayName (network):', err);
+    return false;
+  }
 }

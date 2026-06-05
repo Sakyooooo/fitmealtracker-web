@@ -8,10 +8,10 @@ import FriendList from '@/components/friends/FriendList';
 export default function FriendsPage() {
   const {
     enabled, loading, connectionError,
-    userId, friendCode,
+    userId, friendCode, displayName,
     friends, pendingReceived, pendingSent,
     error,
-    addFriend, acceptFriend, blockOrReject, removeFriend, clearError,
+    addFriend, acceptFriend, blockOrReject, removeFriend, updateNickname, clearError,
   } = useFriends();
 
   // ── Supabase 未設定 ────────────────────────────────────────────────────────
@@ -122,7 +122,12 @@ export default function FriendsPage() {
       </div>
 
       <div className="h-px bg-gray-100" />
-      <FriendCodeCard friendCode={friendCode} userId={userId} />
+      <FriendCodeCard
+        friendCode={friendCode}
+        userId={userId}
+        displayName={displayName}
+        onUpdateNickname={updateNickname}
+      />
       <div className="h-px bg-gray-100" />
       <AddFriendInput onAdd={addFriend} error={error} onClearError={clearError} />
       <div className="h-px bg-gray-100" />
