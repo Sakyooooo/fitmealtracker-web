@@ -17,3 +17,4 @@ export const TIMER_FONT_SIZE   = 'clamp(64px, 20vw, 108px)' as const;
 
 // ── Storage keys ──────────────────────────────────────────────────────────────
 export const STORAGE_KEY_DATA_TAB = 'fmt_data_tab';
+export const STORAGE_KEY_USER_ID  = 'fmt_user_id';

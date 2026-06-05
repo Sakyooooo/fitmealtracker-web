@@ -65,6 +65,28 @@ export type DayStat = {
   burned: number;
 };
 
+// ── Friends ───────────────────────────────────────────────────────────────────
+
+export type FriendStatus = 'pending' | 'accepted' | 'blocked';
+
+/** Supabase users テーブルの行 */
+export type FriendUser = {
+  id: string;
+  friend_code: string;
+  display_name: string | null;
+  created_at: string;
+};
+
+/** friendships テーブルの行（相手ユーザー情報を JOIN 済み） */
+export type Friendship = {
+  id: string;
+  requester_id: string;
+  receiver_id: string;
+  status: FriendStatus;
+  created_at: string;
+  friend: FriendUser;   // 相手側のユーザー情報
+};
+
 export type GymSessionStatus = 'active' | 'completed' | 'canceled';
 
 export type GymSession = {
