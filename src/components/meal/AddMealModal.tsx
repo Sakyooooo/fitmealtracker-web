@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { MealCategory, MealEntry, MealAnalysisResult } from '@/lib/types';
 import { todayString } from '@/lib/stats';
@@ -12,6 +12,8 @@ type Props = {
   onSave: (
     data: Omit<MealEntry, 'id' | 'photoUri' | 'photoId'> & { photoFile?: File | null },
   ) => void;
+  initialPhotoFile?: File | null;
+  initialAnalysis?: MealAnalysisResult | null;
 };
 
 const CATEGORIES: MealCategory[] = ['朝食', '昼食', '夕食', '間食'];
@@ -21,7 +23,7 @@ function nowTime(): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 }
 
-export default function AddMealModal({ open, onClose, onSave }: Props) {
+export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, initialAnalysis }: Props) {
   const [name, setName] = useState('');
   const [calories, setCalories] = useState('');
   const [time, setTime] = useState(nowTime);
@@ -47,6 +49,24 @@ export default function AddMealModal({ open, onClose, onSave }: Props) {
   }
 
   function handleClose() { reset(); onClose(); }
+
+  // initialPhotoFile / initialAnalysis が渡されたとき（カメラ即解析）にフォームを補完する
+  useEffect(() => {
+    if (!open) return;
+    if (initialPhotoFile) {
+      setPhotoFile(initialPhotoFile);
+      setPhotoPreview(URL.createObjectURL(initialPhotoFile));
+    }
+    if (initialAnalysis) {
+      setAnalyzeResult(initialAnalysis);
+      if (initialAnalysis.estimatedCalories !== null) setCalories(String(initialAnalysis.estimatedCalories));
+      if (initialAnalysis.dishName) setName(initialAnalysis.dishName);
+      if (initialAnalysis.protein !== null) { setProtein(String(initialAnalysis.protein)); setShowPfc(true); }
+      if (initialAnalysis.fat !== null) { setFat(String(initialAnalysis.fat)); setShowPfc(true); }
+      if (initialAnalysis.carbs !== null) { setCarbs(String(initialAnalysis.carbs)); setShowPfc(true); }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

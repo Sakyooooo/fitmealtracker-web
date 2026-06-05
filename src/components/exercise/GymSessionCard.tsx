@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { GymSession, GymGoalType } from '@/lib/types';
+import { GYM_BG_URL, BG_OPACITY, HERO_FONT_SIZE, TIMER_FONT_SIZE } from '@/lib/constants';
 
 export type GymGoal = { type: GymGoalType; value: number };
 
@@ -18,9 +19,6 @@ interface Props {
   onAddManual?: () => void;
   onGoalSetting?: () => void;
 }
-
-const GYM_BG =
-  'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?auto=format&fit=crop&w=900&q=40';
 
 function formatElapsed(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -86,7 +84,7 @@ export default function GymSessionCard({
       <div className="flex flex-col relative overflow-hidden" style={{ minHeight }}>
         <div
           className="absolute inset-0 bg-cover bg-center pointer-events-none select-none"
-          style={{ backgroundImage: `url(${GYM_BG})`, opacity: 0 }}
+          style={{ backgroundImage: `url(${GYM_BG_URL})`, opacity: 0 }}
         />
         <div className="relative z-10 flex flex-col flex-1">
           {/* Header */}
@@ -118,7 +116,7 @@ export default function GymSessionCard({
             <div className="flex items-baseline gap-2">
               <p
                 className="font-black italic leading-none tracking-tighter text-gray-900 tabular-nums"
-                style={{ fontSize: 'clamp(76px, 23vw, 120px)' }}
+                style={{ fontSize: HERO_FONT_SIZE }}
               >
                 {displayValue}
               </p>
@@ -176,15 +174,17 @@ export default function GymSessionCard({
   // ── Active ───────────────────────────────────────────────────────────────────
   if (session.status === 'active') {
     const sessionMin = Math.floor(elapsed / 60);
-    const activePct = gymGoal?.type === 'time'
-      ? ((todayMinutes + sessionMin) / gymGoal.value) * 100
-      : (todayBurned / gymGoal!.value) * 100;
+    const activePct = gymGoal
+      ? gymGoal.type === 'time'
+        ? ((todayMinutes + sessionMin) / gymGoal.value) * 100
+        : (todayBurned / gymGoal.value) * 100
+      : 0;
 
     return (
       <div className="flex flex-col relative overflow-hidden" style={{ minHeight }}>
         <div
           className="absolute inset-0 bg-cover bg-center pointer-events-none select-none"
-          style={{ backgroundImage: `url(${GYM_BG})`, opacity: 0.06 }}
+          style={{ backgroundImage: `url(${GYM_BG_URL})`, opacity: BG_OPACITY }}
         />
         <div className="relative z-10 flex flex-col flex-1">
           <div className="px-4 pt-4 pb-2 flex items-center justify-between">
@@ -222,7 +222,7 @@ export default function GymSessionCard({
           <div className="flex-1 flex flex-col items-center justify-center px-4">
             <p
               className="font-black tabular-nums leading-none tracking-tighter text-gray-900"
-              style={{ fontSize: 'clamp(64px, 20vw, 108px)' }}
+              style={{ fontSize: TIMER_FONT_SIZE }}
             >
               {formatElapsed(elapsed)}
             </p>
@@ -256,7 +256,7 @@ export default function GymSessionCard({
     <div className="flex flex-col relative overflow-hidden" style={{ minHeight }}>
       <div
         className="absolute inset-0 bg-cover bg-center pointer-events-none select-none"
-        style={{ backgroundImage: `url(${GYM_BG})`, opacity: 0.06 }}
+        style={{ backgroundImage: `url(${GYM_BG_URL})`, opacity: BG_OPACITY }}
       />
       <div className="relative z-10 flex flex-col flex-1">
         <div className="px-4 pt-4 pb-2">
@@ -269,7 +269,7 @@ export default function GymSessionCard({
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <p
             className="font-black tabular-nums leading-none tracking-tighter text-gray-900"
-            style={{ fontSize: 'clamp(64px, 20vw, 108px)' }}
+            style={{ fontSize: TIMER_FONT_SIZE }}
           >
             {formatElapsed(session.durationSec ?? 0)}
           </p>

@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { useAppData } from '@/hooks/useAppData';
+import { useState, useRef } from 'react';
+import { useMealData } from '@/hooks/useMealData';
+import { useSettings } from '@/hooks/useSettings';
 import { getMealsByDate, sumCalories, todayString } from '@/lib/stats';
+import { MEAL_BG_URL, BG_OPACITY, HERO_FONT_SIZE } from '@/lib/constants';
+import { MealAnalysisResult } from '@/lib/types';
+import { analyzeWithGemini } from '@/lib/gemini';
 import MealCard from '@/components/meal/MealCard';
 import AddMealModal from '@/components/meal/AddMealModal';
 import Modal from '@/components/ui/Modal';
-
-// Faint restaurant/cafe background
-const MEAL_BG =
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=40';
 
 function ProgressBar({ pct }: { pct: number }) {
   const clamped = Math.min(100, Math.max(0, pct));
@@ -25,9 +25,37 @@ function ProgressBar({ pct }: { pct: number }) {
 }
 
 export default function MealPage() {
-  const { meals, settings, addMeal, deleteMeal, updateSettings, hydrated } = useAppData();
+  const { meals, addMeal, deleteMeal, hydrated } = useMealData();
+  const { settings, updateSettings } = useSettings();
   const [showModal, setShowModal] = useState(false);
   const [showList, setShowList] = useState(false);
+
+  // ── Camera instant-analyze ────────────────────────────────────────────────────
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const [cameraAnalyzing, setCameraAnalyzing] = useState(false);
+  const [cameraFile, setCameraFile] = useState<File | null>(null);
+  const [cameraAnalysis, setCameraAnalysis] = useState<MealAnalysisResult | null>(null);
+
+  async function handleCameraCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setCameraAnalyzing(true);
+    try {
+      const result = await analyzeWithGemini(file);
+      setCameraFile(file);
+      setCameraAnalysis(result);
+      setShowModal(true);
+    } finally {
+      setCameraAnalyzing(false);
+    }
+  }
+
+  function handleModalClose() {
+    setShowModal(false);
+    setCameraFile(null);
+    setCameraAnalysis(null);
+  }
 
   // ── Goal setting ─────────────────────────────────────────────────────────────
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -67,10 +95,9 @@ export default function MealPage() {
 
   return (
     <div className="relative min-h-screen bg-white">
-      {/* Page-wide faint background */}
       <div
         className="fixed inset-0 bg-cover bg-center pointer-events-none select-none z-0"
-        style={{ backgroundImage: `url(${MEAL_BG})`, opacity: 0.07 }}
+        style={{ backgroundImage: `url(${MEAL_BG_URL})`, opacity: BG_OPACITY }}
       />
 
       <div className="relative z-10">
@@ -104,7 +131,7 @@ export default function MealPage() {
             <div className="flex items-baseline gap-2">
               <p
                 className="font-black italic leading-none tracking-tighter text-gray-900 tabular-nums"
-                style={{ fontSize: 'clamp(76px, 23vw, 120px)' }}
+                style={{ fontSize: HERO_FONT_SIZE }}
               >
                 {todayIntake.toLocaleString()}
               </p>
@@ -128,17 +155,32 @@ export default function MealPage() {
           {/* CTA */}
           <div className="flex flex-col items-center pb-6 gap-4">
             <div className="flex items-center gap-8">
-              {/* Left — camera / photo shortcut */}
+              {/* Left — camera: 撮影 → 即解析 → モーダル補完 */}
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleCameraCapture}
+              />
               <button
                 type="button"
-                onClick={() => setShowModal(true)}
+                onClick={() => cameraRef.current?.click()}
+                disabled={cameraAnalyzing}
                 className="w-14 h-14 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200
-                           flex items-center justify-center hover:bg-white transition-colors shadow-sm"
+                           flex items-center justify-center hover:bg-white transition-colors shadow-sm
+                           disabled:opacity-50"
+                title="カメラで撮影して解析"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
+                {cameraAnalyzing ? (
+                  <span className="animate-spin text-base">⏳</span>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                )}
               </button>
 
               {/* Main record button */}
@@ -151,9 +193,13 @@ export default function MealPage() {
                 <span className="text-white font-black text-base tracking-widest">RECORD</span>
               </button>
 
-              {/* Right — placeholder */}
-              <div className="w-14 h-14 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200
-                              flex items-center justify-center shadow-sm">
+              {/* Right — list toggle */}
+              <button
+                type="button"
+                onClick={() => setShowList((v) => !v)}
+                className="w-14 h-14 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200
+                            flex items-center justify-center shadow-sm hover:bg-white transition-colors"
+              >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round">
                   <line x1="8" y1="6" x2="21" y2="6"/>
                   <line x1="8" y1="12" x2="21" y2="12"/>
@@ -162,7 +208,7 @@ export default function MealPage() {
                   <line x1="3" y1="12" x2="3.01" y2="12"/>
                   <line x1="3" y1="18" x2="3.01" y2="18"/>
                 </svg>
-              </div>
+              </button>
             </div>
           </div>
         </div>
@@ -235,7 +281,6 @@ export default function MealPage() {
               />
               <span className="text-lg font-black text-gray-400 w-12">kcal</span>
             </div>
-            {/* Quick picks */}
             <div className="flex gap-2 mt-3">
               {[1400, 1600, 1800, 2000, 2200].map((v) => (
                 <button
@@ -279,8 +324,10 @@ export default function MealPage() {
 
         <AddMealModal
           open={showModal}
-          onClose={() => setShowModal(false)}
+          onClose={handleModalClose}
           onSave={(data) => addMeal(data)}
+          initialPhotoFile={cameraFile}
+          initialAnalysis={cameraAnalysis}
         />
       </div>
     </div>

@@ -40,7 +40,16 @@ function load<T>(key: string, fallback: T): T {
 
 function save<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+      throw new Error(
+        'ストレージの空き容量が不足しています。不要なデータを削除してください。',
+      );
+    }
+    throw err;
+  }
 }
 
 async function withPhotoUrls(meals: MealEntry[]): Promise<MealEntry[]> {
@@ -151,6 +160,20 @@ export async function deleteGymSession(id: string): Promise<void> {
     KEYS.gymSessions,
     load<GymSession[]>(KEYS.gymSessions, []).filter((item) => item.id !== id),
   );
+}
+
+export async function bulkImportMeals(entries: MealEntry[]): Promise<void> {
+  const existing = load<MealEntry[]>(KEYS.meals, []);
+  const existingIds = new Set(existing.map((m) => m.id));
+  const toAdd = entries.filter((m) => !existingIds.has(m.id)).map(storedMeal);
+  save(KEYS.meals, [...toAdd, ...existing]);
+}
+
+export async function bulkImportExercises(entries: ExerciseEntry[]): Promise<void> {
+  const existing = load<ExerciseEntry[]>(KEYS.exercises, []);
+  const existingIds = new Set(existing.map((e) => e.id));
+  const toAdd = entries.filter((e) => !existingIds.has(e.id));
+  save(KEYS.exercises, [...toAdd, ...existing]);
 }
 
 export function loadSettings(): AppSettings {

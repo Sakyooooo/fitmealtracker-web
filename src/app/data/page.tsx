@@ -1,25 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { useAppData } from '@/hooks/useAppData';
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useMealData } from '@/hooks/useMealData';
+import { useExerciseData } from '@/hooks/useExerciseData';
+import { useWeightData } from '@/hooks/useWeightData';
+import { useSettings } from '@/hooks/useSettings';
+import { STORAGE_KEY_DATA_TAB } from '@/lib/constants';
 import {
   getRecentDayStats, getMealsByDate, todayString,
   sumProtein, sumFat, sumCarbs, calcStreak,
 } from '@/lib/stats';
 
-// Stats components
 import WeeklyChart from '@/components/data/WeeklyChart';
 import WeeklySummary from '@/components/data/WeeklySummary';
 import PfcProgress from '@/components/data/PfcProgress';
 import ExportButton from '@/components/data/ExportButton';
 
-// Weight components
 import WeightSummaryCard from '@/components/weight/WeightSummaryCard';
 import WeightChart from '@/components/weight/WeightChart';
 import WeightCard from '@/components/weight/WeightCard';
 import AddWeightModal from '@/components/weight/AddWeightModal';
 
-// Calendar components
 import CalendarView from '@/components/calendar/CalendarView';
 import DayDetailModal from '@/components/calendar/DayDetailModal';
 
@@ -38,12 +40,38 @@ const DEFAULT_TARGET_FAT = 60;
 const DEFAULT_TARGET_CARBS = 260;
 
 export default function DataPage() {
-  const {
-    meals, exercises, weights, settings,
-    addWeight, deleteWeight, updateSettings, hydrated,
-  } = useAppData();
+  return (
+    <Suspense>
+      <DataPageInner />
+    </Suspense>
+  );
+}
 
-  const [segment, setSegment] = useState<Segment>('stats');
+function DataPageInner() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab');
+
+  const { meals, hydrated: mealHydrated } = useMealData();
+  const { exercises, hydrated: exerciseHydrated } = useExerciseData();
+  const { weights, addWeight, deleteWeight, hydrated: weightHydrated } = useWeightData();
+  const { settings, updateSettings } = useSettings();
+
+  const hydrated = mealHydrated && exerciseHydrated && weightHydrated;
+
+  const [segment, setSegment] = useState<Segment>(() => {
+    // URL param takes priority (external link), then localStorage, then default
+    if (tabParam === 'weight' || tabParam === 'calendar') return tabParam;
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(STORAGE_KEY_DATA_TAB);
+      if (stored === 'weight' || stored === 'calendar' || stored === 'stats') return stored;
+    }
+    return 'stats';
+  });
+
+  function changeSegment(s: Segment) {
+    setSegment(s);
+    try { localStorage.setItem(STORAGE_KEY_DATA_TAB, s); } catch { /* quota exceeded — ignore for UI preference */ }
+  }
 
   // ── Stats state ──────────────────────────────────────────────────────────────
   const weekStats = getRecentDayStats(meals, exercises, 7);
@@ -120,7 +148,7 @@ export default function DataPage() {
           <button
             key={s.id}
             type="button"
-            onClick={() => setSegment(s.id)}
+            onClick={() => changeSegment(s.id)}
             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
               segment === s.id
                 ? 'bg-white text-gray-900 shadow-sm'
