@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MealEntry, ExerciseEntry, WeightEntry, AppSettings, GymSession } from '@/lib/types';
 import {
   fetchMeals,
@@ -36,7 +36,19 @@ export function useAppData() {
   const [gymSession, setGymSession] = useState<GymSession | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
+  // IndexedDB 画像の object URL を追跡して revoke する
+  const photoUrlsRef = useRef<string[]>([]);
+
+  function revokePhotoUrls() {
+    photoUrlsRef.current.forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+    });
+    photoUrlsRef.current = [];
+  }
+
   const loadAll = useCallback(async () => {
+    // 前回ロード時に作成した object URL を解放
+    revokePhotoUrls();
     setHydrated(false);
     const [m, e, w, gs] = await Promise.all([
       fetchMeals(),
@@ -44,6 +56,8 @@ export function useAppData() {
       fetchWeights(),
       fetchActiveGymSession(),
     ]);
+    // 新しく作られた photo URL を追跡
+    photoUrlsRef.current = m.flatMap((meal) => (meal.photoUri ? [meal.photoUri] : []));
     setMeals(m);
     setExercises(e);
     setWeights(w);
@@ -54,11 +68,14 @@ export function useAppData() {
 
   useEffect(() => {
     loadAll();
+    // アンマウント時にすべての object URL を解放
+    return () => { revokePhotoUrls(); };
   }, [loadAll]);
 
   const addMeal = useCallback(async (data: NewMealData) => {
     try {
       const saved = await insertMeal({ ...data, date: data.date ?? todayString() });
+      if (saved.photoUri) photoUrlsRef.current.push(saved.photoUri);
       setMeals((prev) => [saved, ...prev]);
     } catch (error) {
       console.error('[local] insert meal failed', error);
@@ -182,10 +199,19 @@ export function useAppData() {
         note: prev.memo ?? '',
         type: 'gymSession',
       };
+      // deleteGymSession は insertExercise 成功後にのみ実行
+      // （保存失敗でセッションが消えるのを防ぐ）
       insertExercise(exerciseData)
-        .then((saved) => setExercises((ex) => [saved, ...ex]))
-        .catch(console.error);
-      deleteGymSession(prev.id).catch(console.error);
+        .then((saved) => {
+          setExercises((ex) => [saved, ...ex]);
+          return deleteGymSession(prev.id);
+        })
+        .catch((err) => {
+          console.error('[saveGymAsExercise] 運動記録の保存に失敗しました', err);
+          alert('ジムセッションの保存に失敗しました。もう一度お試しください。');
+          // 失敗時はセッションを completed 状態に戻す
+          setGymSession(prev);
+        });
       return null;
     });
   }, []);
