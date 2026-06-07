@@ -226,7 +226,24 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
                 </button>
                 {analyzeResult && (
                   <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-2">
-                    <p className="font-semibold">✅ 解析結果（参考値・自由に修正できます）</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold">✅ 解析結果（参考値・自由に修正できます）</p>
+                      {analyzeResult.source === 'db' && (
+                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-green-600 text-white text-[10px] font-bold">
+                          📋 成分表ベース
+                        </span>
+                      )}
+                      {analyzeResult.source === 'ai' && (
+                        <span className="shrink-0 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold border border-amber-300">
+                          🤖 AI推定
+                        </span>
+                      )}
+                    </div>
+                    {analyzeResult.source === 'db' && analyzeResult.matchedFood && (
+                      <p className="text-[11px] text-green-700">
+                        「{analyzeResult.matchedFood}」の{analyzeResult.servingLabel ?? '標準量'}として栄養成分表から算出しました
+                      </p>
+                    )}
                     {analyzeResult.candidates && analyzeResult.candidates.length > 0 && (
                       <div>
                         <p className="text-[11px] text-green-700 mb-1.5">料理名の候補（タップで選択）</p>

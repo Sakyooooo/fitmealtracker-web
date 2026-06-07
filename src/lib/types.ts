@@ -60,6 +60,9 @@ export type MealAnalysisResult = {
   protein: number | null;
   fat: number | null;
   carbs: number | null;
+  source?: 'db' | 'ai' | null;   // 'db'=栄養成分表ベース / 'ai'=AI推定
+  matchedFood?: string | null;   // 成分表でヒットした料理名
+  servingLabel?: string | null;  // 成分表の基準量（例: "1杯"）
 };
 
 export type DayStat = {
