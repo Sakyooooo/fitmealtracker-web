@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GEMINI_ENDPOINT, GEMINI_FALLBACK, extractJson } from '@/lib/gemini';
 import { MealAnalysisResult } from '@/lib/types';
+import { applyNutritionDb } from '@/lib/nutritionDb';
 
 // ── Security: feature flag ────────────────────────────────────────────────────
 // Set MEAL_ANALYSIS_ENABLED=false in environment to disable the endpoint entirely.
@@ -79,7 +80,8 @@ const PROMPT = `
    - 主食・主菜・副菜・付け合わせ・飲み物など、見える要素をすべて考慮する。
 2. 料理名の候補を確信度の高い順に最大3つ挙げる（candidates）。最も確からしいものを dishName にも入れる。
 3. 見える分量と日本の一般的な一人前を基準に、その料理1食分のカロリー(kcal)と PFC(タンパク質/脂質/炭水化物 g) を推定する。
-4. 自信が無い数値は推測で埋めず null にする。
+4. 一般的な一人前と比べた分量を portion として "small"（少なめ）/ "regular"（普通）/ "large"（多め）で表す。
+5. 自信が無い数値は推測で埋めず null にする。
 
 注意:
 - 料理が複数皿あれば合計の量で見積もる。
@@ -98,6 +100,7 @@ const RESPONSE_SCHEMA = {
     protein: { type: 'number', nullable: true },
     fat: { type: 'number', nullable: true },
     carbs: { type: 'number', nullable: true },
+    portion: { type: 'string', nullable: true },
     notes: { type: 'string', nullable: true },
   },
   required: ['dishName', 'candidates', 'estimatedCalories', 'confidence'],
@@ -192,7 +195,12 @@ export async function POST(request: Request) {
 
   const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   if (!text) return NextResponse.json(GEMINI_FALLBACK);
-  return NextResponse.json(normalizeResult(extractJson(text) as MealAnalysisResult));
+
+  const parsed = extractJson(text) as (MealAnalysisResult & { portion?: string | null }) | null;
+  const normalized = normalizeResult(parsed ?? {});
+  // 料理名は AI、カロリー/PFC は栄養成分表で決定的に算出（ヒット時のみ上書き）。
+  const final = applyNutritionDb(normalized, parsed?.portion);
+  return NextResponse.json(final);
 }
 
 // ── Gemini 呼び出し（リトライ＋フォールバック） ───────────────────────────────
