@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { GymSession, GymGoalType } from '@/lib/types';
+import { GymSession, GymGoalType, WorkoutSet } from '@/lib/types';
 import { GYM_BG_URL, BG_OPACITY, HERO_FONT_SIZE, TIMER_FONT_SIZE } from '@/lib/constants';
 
 export type GymGoal = { type: GymGoalType; value: number };
@@ -15,7 +15,7 @@ interface Props {
   onEnd: () => void;
   onCancel: () => void;
   onMemoChange: (memo: string) => void;
-  onSave: (calories: number) => void;
+  onSave: (calories: number, sets: WorkoutSet[]) => void;
   onAddManual?: () => void;
   onGoalSetting?: () => void;
 }
@@ -54,6 +54,9 @@ export default function GymSessionCard({
   const [elapsed, setElapsed] = useState(0);
   const [calories, setCalories] = useState('');
   const [showMemo, setShowMemo] = useState(false);
+  const [workoutSets, setWorkoutSets] = useState<WorkoutSet[]>([]);
+  const [newSet, setNewSet] = useState<WorkoutSet>({ name: '', weightKg: 0, sets: 3, reps: 10 });
+  const [showSetForm, setShowSetForm] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -266,15 +269,20 @@ export default function GymSessionCard({
           </p>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <p
-            className="font-black tabular-nums leading-none tracking-tighter text-gray-900"
-            style={{ fontSize: TIMER_FONT_SIZE }}
-          >
-            {formatElapsed(session.durationSec ?? 0)}
-          </p>
-          <div className="w-44 h-[2px] bg-gray-900 mt-3 mb-6" />
-          <div className="w-full max-w-xs">
+        <div className="flex-1 flex flex-col px-4 overflow-y-auto">
+          {/* タイマー表示 */}
+          <div className="flex flex-col items-center pt-4 pb-4">
+            <p
+              className="font-black tabular-nums leading-none tracking-tighter text-gray-900"
+              style={{ fontSize: TIMER_FONT_SIZE }}
+            >
+              {formatElapsed(session.durationSec ?? 0)}
+            </p>
+            <div className="w-44 h-[2px] bg-gray-900 mt-3 mb-4" />
+          </div>
+
+          {/* 消費カロリー */}
+          <div className="w-full max-w-xs mx-auto mb-4">
             <p className="text-xs font-bold tracking-widest text-gray-400 text-center mb-2">
               消費カロリー（KCAL）
             </p>
@@ -284,6 +292,87 @@ export default function GymSessionCard({
               type="number" placeholder="0" min={0}
               value={calories} onChange={(e) => setCalories(e.target.value)}
             />
+          </div>
+
+          {/* 種目記録 */}
+          <div className="w-full max-w-xs mx-auto mb-4">
+            <p className="text-xs font-bold tracking-widest text-gray-400 mb-2">種目記録（任意）</p>
+            {workoutSets.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {workoutSets.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between bg-white/80 border border-gray-100 rounded-xl px-3 py-2">
+                    <span className="text-sm font-bold text-gray-800">{s.name}</span>
+                    <span className="text-xs text-gray-500 font-medium">
+                      {s.weightKg}kg × {s.sets}セット × {s.reps}回
+                    </span>
+                    <button type="button" onClick={() => setWorkoutSets((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-gray-300 hover:text-gray-500 ml-2 text-lg leading-none">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {showSetForm ? (
+              <div className="bg-gray-50 rounded-2xl p-3 space-y-2">
+                <input
+                  className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-800 focus:outline-none placeholder:text-gray-300"
+                  placeholder="種目名（例: ベンチプレス）"
+                  value={newSet.name}
+                  onChange={(e) => setNewSet((p) => ({ ...p, name: e.target.value }))}
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 mb-1 tracking-widest">重量(kg)</p>
+                    <input type="number" min={0} step={0.5}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-2 py-2 text-sm font-black text-center text-gray-900 focus:outline-none"
+                      value={newSet.weightKg}
+                      onChange={(e) => setNewSet((p) => ({ ...p, weightKg: parseFloat(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 mb-1 tracking-widest">セット</p>
+                    <input type="number" min={1}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-2 py-2 text-sm font-black text-center text-gray-900 focus:outline-none"
+                      value={newSet.sets}
+                      onChange={(e) => setNewSet((p) => ({ ...p, sets: parseInt(e.target.value) || 1 }))}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 mb-1 tracking-widest">回数</p>
+                    <input type="number" min={1}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-2 py-2 text-sm font-black text-center text-gray-900 focus:outline-none"
+                      value={newSet.reps}
+                      onChange={(e) => setNewSet((p) => ({ ...p, reps: parseInt(e.target.value) || 1 }))}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => setShowSetForm(false)}
+                    className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-400">
+                    キャンセル
+                  </button>
+                  <button type="button"
+                    onClick={() => {
+                      if (!newSet.name.trim()) return;
+                      setWorkoutSets((prev) => [...prev, newSet]);
+                      setNewSet({ name: '', weightKg: 0, sets: 3, reps: 10 });
+                      setShowSetForm(false);
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-[#FF7043] text-white text-sm font-black">
+                    追加
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button"
+                onClick={() => setShowSetForm(true)}
+                className="w-full py-2.5 rounded-xl border border-dashed border-gray-200 text-sm font-bold text-gray-400 flex items-center justify-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                種目を追加
+              </button>
+            )}
           </div>
         </div>
 
@@ -297,7 +386,7 @@ export default function GymSessionCard({
               onClick={() => {
                 const kcal = parseInt(calories, 10);
                 if (isNaN(kcal) || kcal < 0) { alert('消費カロリーを入力してください'); return; }
-                onSave(kcal);
+                onSave(kcal, workoutSets);
               }}
               className="w-28 h-28 rounded-full bg-[#FF7043] flex items-center justify-center shadow-xl active:scale-95 transition-transform">
               <span className="text-white font-black text-lg tracking-wide">保存</span>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { GymSession, ExerciseEntry } from '@/lib/types';
+import { GymSession, ExerciseEntry, WorkoutSet } from '@/lib/types';
 import {
   fetchActiveGymSession,
   insertGymSession,
@@ -66,17 +66,20 @@ export function useGymData({ onExerciseSaved }: Options) {
     });
   }, []);
 
-  const saveGymAsExercise = useCallback(async (calories: number) => {
+  const saveGymAsExercise = useCallback(async (calories: number, workoutSets: WorkoutSet[] = []) => {
     const session = gymSessionRef.current;
     if (!session || session.status !== 'completed') return;
 
     const durationMin = Math.round((session.durationSec ?? 0) / 60);
+    const setsNote = workoutSets.length > 0
+      ? '\n' + workoutSets.map((s) => `${s.name} ${s.weightKg}kg × ${s.sets}セット × ${s.reps}回`).join('\n')
+      : '';
     const exerciseData: Omit<ExerciseEntry, 'id'> = {
       name: 'ジムセッション',
       durationMinutes: durationMin > 0 ? durationMin : 1,
       caloriesBurned: calories,
       date: session.startedAt.slice(0, 10),
-      note: session.memo ?? '',
+      note: (session.memo ?? '') + setsNote,
       type: 'gymSession',
     };
 

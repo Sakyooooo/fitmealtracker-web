@@ -8,9 +8,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/meal', request.url));
   }
 
-  // Retired routes → data
-  if (pathname.startsWith('/weight') || pathname.startsWith('/calendar')) {
-    return NextResponse.redirect(new URL('/data', request.url));
+  // Retired routes → data with correct tab
+  if (pathname.startsWith('/weight')) {
+    return NextResponse.redirect(new URL('/data?tab=weight', request.url));
+  }
+  if (pathname.startsWith('/calendar')) {
+    return NextResponse.redirect(new URL('/data?tab=calendar', request.url));
   }
 
   return NextResponse.next();

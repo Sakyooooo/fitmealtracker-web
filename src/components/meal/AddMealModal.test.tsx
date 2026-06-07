@@ -26,26 +26,24 @@ describe('AddMealModal — 基本表示', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 describe('AddMealModal — バリデーション', () => {
-  it('食事名が空のまま保存しようとするとアラートが出る（onSave は呼ばれない）', () => {
+  it('食事名が空のまま保存するとインラインエラーが表示され onSave は呼ばれない', () => {
     const onSave = vi.fn();
-    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {});
     render(<AddMealModal {...baseProps} onSave={onSave} />);
     fireEvent.click(screen.getByText('保存する'));
     expect(onSave).not.toHaveBeenCalled();
-    expect(alertMock).toHaveBeenCalled();
-    alertMock.mockRestore();
+    // alert ではなくインラインエラーで表示される
+    expect(screen.getByText('食事名を入力してください')).toBeInTheDocument();
   });
 
   it('カロリーが負数のとき onSave は呼ばれない', async () => {
     const onSave = vi.fn();
-    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {});
     render(<AddMealModal {...baseProps} onSave={onSave} />);
     await userEvent.type(screen.getByPlaceholderText(/サラダチキン/), 'テスト食事');
     await userEvent.clear(screen.getByPlaceholderText('例: 380'));
     await userEvent.type(screen.getByPlaceholderText('例: 380'), '-100');
     fireEvent.click(screen.getByText('保存する'));
     expect(onSave).not.toHaveBeenCalled();
-    alertMock.mockRestore();
+    expect(screen.getByText('0以上の数値を入力してください')).toBeInTheDocument();
   });
 });
 

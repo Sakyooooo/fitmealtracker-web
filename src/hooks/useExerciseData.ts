@@ -8,6 +8,7 @@ import {
   updateExercise as updateStoredExercise,
   deleteExercise as deleteStoredExercise,
 } from '@/lib/localRepository';
+import { sbUpsertExercise, sbDeleteExercise } from '@/lib/supabaseRepository';
 import { todayString } from '@/lib/stats';
 
 export function useExerciseData() {
@@ -24,6 +25,7 @@ export function useExerciseData() {
     try {
       const saved = await insertExercise({ ...data, date: data.date ?? todayString() });
       setExercises((prev) => [saved, ...prev]);
+      sbUpsertExercise(saved).catch(console.error);
     } catch (error) {
       console.error('[useExerciseData] addExercise', error);
       alert(error instanceof Error ? error.message : '運動の保存に失敗しました。');
@@ -34,6 +36,7 @@ export function useExerciseData() {
     try {
       const saved = await updateStoredExercise(updated);
       setExercises((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
+      sbUpsertExercise(saved).catch(console.error);
     } catch (error) {
       console.error('[useExerciseData] updateExercise', error);
       alert('運動の更新に失敗しました。');
@@ -43,11 +46,12 @@ export function useExerciseData() {
   const deleteExercise = useCallback(async (id: string) => {
     setExercises((prev) => prev.filter((e) => e.id !== id));
     await deleteStoredExercise(id);
+    sbDeleteExercise(id).catch(console.error);
   }, []);
 
-  /** gym → exercise 統合用: 外部から exercise を先頭追加する */
   const prependExercise = useCallback((exercise: ExerciseEntry) => {
     setExercises((prev) => [exercise, ...prev]);
+    sbUpsertExercise(exercise).catch(console.error);
   }, []);
 
   return { exercises, hydrated, addExercise, updateExercise, deleteExercise, prependExercise };

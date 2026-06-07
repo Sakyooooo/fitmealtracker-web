@@ -44,6 +44,36 @@ export const DEFAULT_PRESETS = [
   'ジョギング', 'ウォーキング', '水泳', 'その他',
 ];
 
+// 種目名 → アバターのアニメーションクリップ名（fitness_avatar_complete.glb）
+export const EXERCISE_ANIMATION: Record<string, string> = {
+  'ベンチプレス': 'BenchPress',
+  'デッドリフト': 'Deadlift',
+  'スクワット': 'Squat',
+  'ランニング': 'Run',
+  'クランチ': 'BicycleCrunch',
+  'レッグプレス': 'Squat',
+  'プルアップ': 'PullUp',
+  'バイセップカール': 'Idle',
+  'ダンベルフライ': 'BenchPress',
+  'プランク': 'Plank',
+  'トライセップディップ': 'PushUp',
+  'ランジ': 'Squat',
+  'ジョギング': 'Run',
+  'ウォーキング': 'Walking',
+  '水泳': 'Idle',
+  'ジムセッション': 'Idle',
+  'その他': 'Idle',
+};
+
+/** 種目名から対応アニメ名を返す（無ければ Idle）。 */
+export function exerciseAnimation(name: string): string {
+  if (EXERCISE_ANIMATION[name]) return EXERCISE_ANIMATION[name];
+  const hit = Object.keys(EXERCISE_ANIMATION).find(
+    (k) => name.includes(k) || k.includes(name),
+  );
+  return hit ? EXERCISE_ANIMATION[hit] : 'Idle';
+}
+
 export function estimateExerciseCalories(name: string, durationMinutes: number): number {
   const matched = Object.entries(ACTIVITY_RATES).find(
     ([key]) => name.includes(key) || key.includes(name),

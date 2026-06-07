@@ -39,6 +39,7 @@ export default function ExercisePicker({ onAdd }: Props) {
   }, [phase]);
 
   function save(p: { name: string; startedAt: number }) {
+    // eslint-disable-next-line react-hooks/purity
     const durationMin = Math.max(1, Math.round((Date.now() - p.startedAt) / 60000));
     onAdd({
       name: p.name,
@@ -55,6 +56,7 @@ export default function ExercisePicker({ onAdd }: Props) {
       if (phase.name === name) return; // 同じ種目なら無視
       save(phase);                     // 現在の種目を保存
     }
+    // eslint-disable-next-line react-hooks/purity
     setPhase({ type: 'timing', name, startedAt: Date.now() });
   }
 

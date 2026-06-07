@@ -1,4 +1,6 @@
 import Navigation from './Navigation';
+import OnboardingModal from '@/components/onboarding/OnboardingModal';
+import MigrationBanner from '@/components/migration/MigrationBanner';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,6 +9,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         {children}
       </div>
       <Navigation />
+      <OnboardingModal />
+      <MigrationBanner />
     </>
   );
 }
