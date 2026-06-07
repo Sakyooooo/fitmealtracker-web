@@ -77,7 +77,7 @@ export default function FriendsPage() {
     userId, friendCode, displayName,
     friends, pendingReceived,
     error,
-    addFriend, updateNickname, clearError,
+    addFriend, acceptFriend, blockOrReject, updateNickname, clearError,
   } = useFriends();
 
   const { items: timeline, loading: tlLoading, load: loadTimeline, react } = useTimeline();
@@ -309,6 +309,52 @@ export default function FriendsPage() {
             ))}
           </div>
         </div>
+
+        {/* ── フレンド申請（承認 / 拒否） ── */}
+        {pendingReceived.length > 0 && (
+          <div className="px-4 pb-3">
+            <p className="text-[10px] font-black text-gray-400 tracking-widest uppercase mb-2">
+              フレンド申請（{pendingReceived.length}）
+            </p>
+            <div className="space-y-2">
+              {pendingReceived.map((f) => {
+                const name = f.friend.display_name ?? f.friend.friend_code;
+                const initial = name.charAt(0).toUpperCase();
+                return (
+                  <div key={f.id} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 bg-[#FAF0FC]">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+                      style={{ background: ACCENT }}>
+                      {f.friend.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={f.friend.avatar_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-base font-black text-white">{initial}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-gray-900 truncate">{name}</p>
+                      <p className="text-[10px] font-bold tracking-widest" style={{ color: ACCENT }}>
+                        {f.friend.friend_code}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button type="button" onClick={() => acceptFriend(f.id)}
+                        className="px-3.5 py-1.5 text-white text-xs font-black rounded-lg active:scale-95 transition-transform"
+                        style={{ background: ACCENT }}>
+                        承認
+                      </button>
+                      <button type="button" onClick={() => blockOrReject(f.id)}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-500 text-xs font-bold rounded-lg active:scale-95 transition-transform">
+                        拒否
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="h-px bg-gray-100 mt-3" />
+          </div>
+        )}
 
         {/* ── フレンドアバターストリップ（Timeline タブのフィルター） ── */}
         {tab === 'timeline' && (
