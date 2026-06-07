@@ -72,24 +72,48 @@ function isAllowedOrigin(origin: string | null): boolean {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PROMPT = `
-この料理の画像を分析してください。
-以下のJSONのみを返してください（他のテキスト・マークダウン不要）:
-{
-  "dishName": "料理名（日本語で具体的に。不明ならnull）",
-  "estimatedCalories": 数値（cal、不明ならnull）,
-  "confidence": 0.0〜1.0,
-  "protein": 数値（タンパク質 g、不明ならnull）,
-  "fat": 数値（脂質 g、不明ならnull）,
-  "carbs": 数値（炭水化物 g、不明ならnull）,
-  "notes": "補足説明（不要ならnull）"
-}
+あなたは日本の管理栄養士です。この食事の写真を分析してください。
+
+手順:
+1. 写っている料理・食品を特定する（日本語で具体的に。例:「鶏の唐揚げ定食」「ミックスサラダ」「ざるそば」）。
+   - 主食・主菜・副菜・付け合わせ・飲み物など、見える要素をすべて考慮する。
+2. 料理名の候補を確信度の高い順に最大3つ挙げる（candidates）。最も確からしいものを dishName にも入れる。
+3. 見える分量と日本の一般的な一人前を基準に、その料理1食分のカロリー(kcal)と PFC(タンパク質/脂質/炭水化物 g) を推定する。
+4. 自信が無い数値は推測で埋めず null にする。
+
+注意:
+- 料理が複数皿あれば合計の量で見積もる。
+- 皿・箸・手などが写っていればスケールの参考にする。
+- confidence は dishName の確からしさ（0.0〜1.0）。
 `.trim();
+
+// Gemini 構造化出力スキーマ（JSON を確実にパースできるようにする）
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    dishName: { type: 'string', nullable: true },
+    candidates: { type: 'array', items: { type: 'string' } },
+    estimatedCalories: { type: 'number', nullable: true },
+    confidence: { type: 'number', nullable: true },
+    protein: { type: 'number', nullable: true },
+    fat: { type: 'number', nullable: true },
+    carbs: { type: 'number', nullable: true },
+    notes: { type: 'string', nullable: true },
+  },
+  required: ['dishName', 'candidates', 'estimatedCalories', 'confidence'],
+};
 
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
 function normalizeResult(value: Partial<MealAnalysisResult>): MealAnalysisResult {
+  const candidates = Array.isArray(value.candidates)
+    ? Array.from(new Set(
+        value.candidates.filter((c): c is string => typeof c === 'string' && c.trim() !== ''),
+      )).slice(0, 3)
+    : null;
   return {
-    dishName: typeof value.dishName === 'string' ? value.dishName : null,
+    dishName: typeof value.dishName === 'string' ? value.dishName : (candidates?.[0] ?? null),
+    candidates: candidates && candidates.length > 0 ? candidates : null,
     estimatedCalories:
       typeof value.estimatedCalories === 'number' ? value.estimatedCalories : null,
     confidence: typeof value.confidence === 'number' ? value.confidence : null,
@@ -152,22 +176,64 @@ export async function POST(request: Request) {
         { inline_data: { mime_type: image.type, data: base64 } },
       ],
     }],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      responseSchema: RESPONSE_SCHEMA,
+    },
   };
 
-  try {
-    const res = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+  // Gemini はモデル過負荷で 503 / 429 を返すことがある。
+  //  - 同一モデルで短い指数バックオフ付きリトライ
+  //  - それでもダメなら flash-lite にフォールバック
+  // のどちらかで一時的なエラーを吸収し「そもそも出ない」を減らす。
+  const data = await callGeminiWithFallback(apiKey, body);
+  if (!data) return NextResponse.json(GEMINI_FALLBACK);
 
-    if (!res.ok) return NextResponse.json(GEMINI_FALLBACK);
+  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  if (!text) return NextResponse.json(GEMINI_FALLBACK);
+  return NextResponse.json(normalizeResult(extractJson(text) as MealAnalysisResult));
+}
 
-    const data = await res.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    return NextResponse.json(normalizeResult(extractJson(text) as MealAnalysisResult));
-  } catch (error) {
-    console.error('[gemini route]', error);
-    return NextResponse.json(GEMINI_FALLBACK);
+// ── Gemini 呼び出し（リトライ＋フォールバック） ───────────────────────────────
+const GEMINI_FALLBACK_ENDPOINT =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function callGeminiWithFallback(
+  apiKey: string,
+  body: unknown,
+): Promise<{ candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> } | null> {
+  // 第一候補は高精度な flash、ダメなら軽量な flash-lite。
+  const endpoints = [GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT];
+
+  for (const endpoint of endpoints) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(`${endpoint}?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (res.ok) return await res.json();
+
+        const status = res.status;
+        if (!RETRYABLE_STATUS.has(status)) {
+          // 4xx（スキーマ不正・認証など）はリトライしても無駄なので次モデルへ
+          const detail = (await res.text().catch(() => '')).slice(0, 200);
+          console.error('[gemini] non-retryable HTTP', status, detail);
+          break;
+        }
+        // リトライ可能エラー: 指数バックオフ＋ジッター
+        console.warn('[gemini] retryable HTTP', status, `endpoint=${endpoint} attempt=${attempt}`);
+        await sleep(400 * (attempt + 1) + Math.floor(Math.random() * 300));
+      } catch (error) {
+        console.error('[gemini] fetch error', error);
+        await sleep(300);
+      }
+    }
   }
+  return null;
 }
