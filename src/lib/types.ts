@@ -10,6 +10,7 @@ export type MealEntry = {
   note?: string;
   photoId?: string;
   photoUri?: string;
+  photoUrl?: string; // Supabase Storage 公開URL（同期後にセット）
   protein?: number;  // g
   fat?: number;      // g
   carbs?: number;    // g
@@ -46,6 +47,8 @@ export type AppSettings = {
   targetCarbs?: number;
   gymGoalType?: GymGoalType;
   gymGoalValue?: number;
+  location?: string;        // 例: "東京・日本"
+  avatarUrl?: string;       // プロフィール画像（リサイズ済み data URL）
 };
 
 export type MealAnalysisResult = {
@@ -74,6 +77,7 @@ export type FriendUser = {
   id: string;
   friend_code: string;
   display_name: string | null;
+  avatar_url?: string | null;   // プロフィール画像（data URL）
   created_at: string;
 };
 
@@ -107,6 +111,8 @@ export type TimelineItem = {
   user_id: string;
   display_name: string | null;
   friend_code: string;
+  avatarUrl?: string | null;   // 投稿者のプロフィール画像
+
   // 食事
   name: string;
   calories: number;
@@ -116,6 +122,7 @@ export type TimelineItem = {
   protein?: number | null;
   fat?: number | null;
   carbs?: number | null;
+  photoUrl?: string | null; // 食事写真の公開URL
   // 運動のみ
   duration_minutes?: number;
   exercise_type?: string;
@@ -129,6 +136,13 @@ export type TimelineItem = {
 
 export type GymSessionStatus = 'active' | 'completed' | 'canceled';
 
+export type WorkoutSet = {
+  name: string;
+  weightKg: number;
+  sets: number;
+  reps: number;
+};
+
 export type GymSession = {
   id: string;
   startedAt: string;       // ISO string
@@ -136,5 +150,6 @@ export type GymSession = {
   durationSec?: number;
   estimatedCaloriesBurned?: number;
   memo?: string;
+  workoutSets?: WorkoutSet[];
   status: GymSessionStatus;
 };

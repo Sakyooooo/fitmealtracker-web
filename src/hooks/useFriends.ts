@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, supabaseEnabled } from '@/lib/supabase';
 import {
-  getOrCreateUserId,
+  ensureAuthUserId,
   syncUserToSupabase,
   cacheFriendCode,
   getCachedFriendCode,
@@ -50,8 +50,8 @@ export function useFriends(): UseFriendsReturn {
       .from('friendships')
       .select(`
         id, requester_id, receiver_id, status, created_at,
-        requester:users!friendships_requester_id_fkey(id, friend_code, display_name, created_at),
-        receiver:users!friendships_receiver_id_fkey(id, friend_code, display_name, created_at)
+        requester:users!friendships_requester_id_fkey(id, friend_code, display_name, avatar_url, created_at),
+        receiver:users!friendships_receiver_id_fkey(id, friend_code, display_name, avatar_url, created_at)
       `)
       .or(`requester_id.eq.${uid},receiver_id.eq.${uid}`)
       .neq('status', 'blocked');
@@ -67,8 +67,8 @@ export function useFriends(): UseFriendsReturn {
       receiver_id: string;
       status: FriendStatus;
       created_at: string;
-      requester: { id: string; friend_code: string; display_name: string | null; created_at: string };
-      receiver:  { id: string; friend_code: string; display_name: string | null; created_at: string };
+      requester: { id: string; friend_code: string; display_name: string | null; avatar_url: string | null; created_at: string };
+      receiver:  { id: string; friend_code: string; display_name: string | null; avatar_url: string | null; created_at: string };
     }>;
 
     const toFriendship = (row: typeof rows[0]): Friendship => ({
@@ -92,9 +92,6 @@ export function useFriends(): UseFriendsReturn {
   useEffect(() => {
     if (!supabaseEnabled) { setLoading(false); return; }
 
-    const uid = getOrCreateUserId();
-    setUserId(uid);
-
     // ① キャッシュから即時表示（ネットワーク不要）
     const cachedCode = getCachedFriendCode();
     const cachedName = getCachedDisplayName();
@@ -104,8 +101,11 @@ export function useFriends(): UseFriendsReturn {
     }
     if (cachedName) setDisplayName(cachedName);
 
-    // ② バックグラウンドで Supabase と同期
+    // ② 匿名認証で本人ID(auth.uid)を確定 → Supabase と同期
     (async () => {
+      const uid = await ensureAuthUserId();
+      setUserId(uid);
+
       const code = await syncUserToSupabase(uid);
       if (code === null) {
         if (!cachedCode) {

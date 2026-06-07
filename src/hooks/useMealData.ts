@@ -8,7 +8,7 @@ import {
   updateMeal as updateStoredMeal,
   deleteMeal as deleteStoredMeal,
 } from '@/lib/localRepository';
-import { sbUpsertMeal, sbDeleteMeal } from '@/lib/supabaseRepository';
+import { sbUpsertMeal, sbDeleteMeal, sbUploadMealPhoto } from '@/lib/supabaseRepository';
 import { todayString } from '@/lib/stats';
 
 type NewMealData = Omit<MealEntry, 'id' | 'date' | 'photoUri' | 'photoId'> & {
@@ -45,8 +45,14 @@ export function useMealData() {
       const saved = await insertMeal({ ...data, date: data.date ?? todayString() });
       if (saved.photoUri) photoUrlsRef.current.push(saved.photoUri);
       setMeals((prev) => [saved, ...prev]);
-      // Supabase に非同期で同期（失敗してもローカルには保存済み）
-      sbUpsertMeal(saved).catch(console.error);
+      // Supabase に非同期で同期（写真があれば Storage にアップロードして photo_url を付与）
+      (async () => {
+        let photoUrl: string | undefined;
+        if (data.photoFile) {
+          photoUrl = (await sbUploadMealPhoto(saved.id, data.photoFile)) ?? undefined;
+        }
+        await sbUpsertMeal({ ...saved, photoUrl });
+      })().catch(console.error);
     } catch (error) {
       console.error('[useMealData] addMeal', error);
       alert(error instanceof Error ? error.message : '食事の保存に失敗しました。');

@@ -12,6 +12,23 @@ const RATE_LIMIT_MAX = 10;
 const RATE_WINDOW_MS = 60_000;
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
+// Global backstop: the per-IP bucket keys on x-forwarded-for, which a non-browser
+// client can spoof/rotate to bypass the per-IP cap. This global counter bounds the
+// TOTAL requests (and therefore Gemini cost) per window regardless of IP.
+const GLOBAL_LIMIT_MAX = Number(process.env.MEAL_ANALYSIS_GLOBAL_MAX ?? 60);
+let globalWindow = { count: 0, resetAt: 0 };
+
+function checkGlobalLimit(): boolean {
+  const now = Date.now();
+  if (now > globalWindow.resetAt) {
+    globalWindow = { count: 1, resetAt: now + RATE_WINDOW_MS };
+    return true;
+  }
+  if (globalWindow.count >= GLOBAL_LIMIT_MAX) return false;
+  globalWindow.count++;
+  return true;
+}
+
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
 
@@ -96,10 +113,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  // 3. Rate limit  (x-forwarded-for set by Vercel; fallback for local dev)
+  // 3. Rate limit
+  //    NOTE: x-forwarded-for is client-spoofable (a non-browser client can rotate it
+  //    to defeat the per-IP cap). The per-IP limit is best-effort; the global cap below
+  //    is the real backstop against API-cost abuse.
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1';
-  if (!checkRateLimit(ip)) {
+  if (!checkRateLimit(ip) || !checkGlobalLimit()) {
     return NextResponse.json(
       { error: 'too many requests' },
       { status: 429, headers: { 'Retry-After': '60' } },

@@ -22,6 +22,8 @@ function generateUUID(): string {
  * localStorage からユーザー ID を取得。
  * 存在しない場合は新規 UUID を生成して保存する。
  * SSR では呼ばれないよう呼び出し側で注意すること。
+ *
+ * ※ フォールバック専用。通常は ensureAuthUserId() を使うこと。
  */
 export function getOrCreateUserId(): string {
   const stored = localStorage.getItem(STORAGE_KEY_USER_ID);
@@ -30,6 +32,54 @@ export function getOrCreateUserId(): string {
   const id = generateUUID();
   localStorage.setItem(STORAGE_KEY_USER_ID, id);
   return id;
+}
+
+/**
+ * 本人IDを確定して返す。
+ *
+ * Supabase 匿名認証（Anonymous Sign-In）でセッションを張り、その auth.uid() を
+ * 本人IDとして使う。これにより「クライアントが user_id を自称する」状態を脱し、
+ * RLS が `user_id = auth.uid()` で本人を識別できるようになる（F1/F2 の根本対策）。
+ *
+ * - ログイン画面は出ない（裏で自動・無音）。
+ * - 匿名サインインが未許可（ダッシュボードのトグルOFF）やオフライン時は、
+ *   従来の localStorage UUID にフォールバックして“今まで通り”動作する。
+ *   → 段階移行を安全にするための保険。
+ */
+let identityPromise: Promise<string> | null = null;
+
+export function ensureAuthUserId(): Promise<string> {
+  // セッション内で一度だけ解決（毎回のサインイン試行とログ多発を防ぐ）。
+  // トグルを後からONにした場合は次回リロードで反映される。
+  if (!identityPromise) identityPromise = resolveIdentity();
+  return identityPromise;
+}
+
+async function resolveIdentity(): Promise<string> {
+  if (!supabaseEnabled || !supabase) return getOrCreateUserId();
+
+  try {
+    // 既存セッションがあれば即利用（ネットワーク不要）
+    const { data: sessionData } = await supabase.auth.getSession();
+    const existingId = sessionData.session?.user?.id;
+    if (existingId) return existingId;
+
+    // 無ければ匿名サインイン（無音・自動）
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (!error && data.user?.id) return data.user.id;
+
+    if (error) {
+      console.warn(
+        '[identity] 匿名サインイン不可（Supabaseダッシュボードで Anonymous Sign-In を有効化してください）:',
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.warn('[identity] ensureAuthUserId フォールバック:', err);
+  }
+
+  // 未許可・失敗時は従来IDで継続（段階移行の保険）
+  return getOrCreateUserId();
 }
 
 // ── フレンドコード ─────────────────────────────────────────────────────────────
@@ -90,6 +140,31 @@ export async function syncUserToSupabase(userId: string): Promise<string | null>
   } catch (err) {
     console.error('[identity] syncUserToSupabase (network):', err);
     return null;
+  }
+}
+
+/**
+ * プロフィール画像（data URL）を Supabase の users.avatar_url に保存する。
+ * null を渡すと画像を削除（NULL）にする。フレンドにも共有される。
+ */
+export async function updateAvatar(
+  userId: string,
+  dataUrl: string | null,
+): Promise<boolean> {
+  if (!supabaseEnabled || !supabase) return false;
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({ avatar_url: dataUrl })
+      .eq('id', userId);
+    if (error) {
+      console.error('[identity] updateAvatar:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[identity] updateAvatar (network):', err);
+    return false;
   }
 }
 

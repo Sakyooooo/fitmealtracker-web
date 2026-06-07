@@ -5,7 +5,7 @@
 
 import { supabase, supabaseEnabled } from './supabase';
 import { MealEntry, ExerciseEntry, ReactionEmoji, TimelineItem, Reaction } from './types';
-import { getOrCreateUserId } from './identity';
+import { ensureAuthUserId } from './identity';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,8 +22,26 @@ function toSupaMeal(m: MealEntry, userId: string) {
     protein:    m.protein ?? null,
     fat:        m.fat ?? null,
     carbs:      m.carbs ?? null,
+    photo_url:  m.photoUrl ?? null,
     is_public:  true,
   };
+}
+
+/**
+ * 食事写真を Storage(meal-photos) にアップロードして公開 URL を返す。
+ * バケット未作成や失敗時は null（タイムラインはプレースホルダ表示にフォールバック）。
+ */
+export async function sbUploadMealPhoto(mealId: string, file: File): Promise<string | null> {
+  if (!supabaseEnabled || !supabase) return null;
+  const ext = ((file.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'));
+  const path = `${mealId}.${ext}`;
+  const { error } = await supabase.storage.from('meal-photos').upload(path, file, {
+    upsert: true,
+    contentType: file.type || 'image/jpeg',
+  });
+  if (error) { console.error('[sbUploadMealPhoto]', error.message); return null; }
+  const { data } = supabase.storage.from('meal-photos').getPublicUrl(path);
+  return data?.publicUrl ?? null;
 }
 
 function toSupaExercise(e: ExerciseEntry, userId: string) {
@@ -44,7 +62,7 @@ function toSupaExercise(e: ExerciseEntry, userId: string) {
 
 export async function sbUpsertMeal(meal: MealEntry): Promise<void> {
   if (!supabaseEnabled || !supabase) return;
-  const userId = getOrCreateUserId();
+  const userId = await ensureAuthUserId();
   const { error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId));
   if (error) console.error('[supabaseRepository] upsertMeal:', error.message);
 }
@@ -57,7 +75,7 @@ export async function sbDeleteMeal(id: string): Promise<void> {
 
 export async function sbFetchMyMeals(): Promise<MealEntry[] | null> {
   if (!supabaseEnabled || !supabase) return null;
-  const userId = getOrCreateUserId();
+  const userId = await ensureAuthUserId();
   const { data, error } = await supabase
     .from('meals')
     .select('*')
@@ -82,7 +100,7 @@ export async function sbFetchMyMeals(): Promise<MealEntry[] | null> {
 
 export async function sbUpsertExercise(exercise: ExerciseEntry): Promise<void> {
   if (!supabaseEnabled || !supabase) return;
-  const userId = getOrCreateUserId();
+  const userId = await ensureAuthUserId();
   const { error } = await supabase.from('exercises').upsert(toSupaExercise(exercise, userId));
   if (error) console.error('[supabaseRepository] upsertExercise:', error.message);
 }
@@ -101,7 +119,7 @@ export async function migrateLocalToSupabase(
   onProgress?: (pct: number) => void,
 ): Promise<boolean> {
   if (!supabaseEnabled || !supabase) return false;
-  const userId = getOrCreateUserId();
+  const userId = await ensureAuthUserId();
   const total = meals.length + exercises.length;
   if (total === 0) return true;
 
@@ -147,7 +165,7 @@ export async function fetchTimeline(
     // 食事
     const { data: mealsData } = await supabase
       .from('meals')
-      .select('id, user_id, name, calories, category, date, note, protein, fat, carbs, created_at, users!meals_user_id_fkey(display_name, friend_code)')
+      .select('id, user_id, name, calories, category, date, note, protein, fat, carbs, photo_url, created_at, users!meals_user_id_fkey(display_name, friend_code, avatar_url)')
       .in('user_id', friendIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
@@ -156,7 +174,7 @@ export async function fetchTimeline(
     // 運動
     const { data: exercisesData } = await supabase
       .from('exercises')
-      .select('id, user_id, name, calories_burned, duration_minutes, date, note, type, created_at, users!exercises_user_id_fkey(display_name, friend_code)')
+      .select('id, user_id, name, calories_burned, duration_minutes, date, note, type, created_at, users!exercises_user_id_fkey(display_name, friend_code, avatar_url)')
       .in('user_id', friendIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
@@ -181,13 +199,14 @@ export async function fetchTimeline(
 
     // 食事アイテム
     const mealItems: TimelineItem[] = (mealsData ?? []).map((m) => {
-      const user = (m.users as unknown) as { display_name: string | null; friend_code: string } | null;
+      const user = (m.users as unknown) as { display_name: string | null; friend_code: string; avatar_url: string | null } | null;
       return {
         id:           m.id as string,
         type:         'meal',
         user_id:      m.user_id as string,
         display_name: user?.display_name ?? null,
         friend_code:  user?.friend_code ?? '',
+        avatarUrl:    user?.avatar_url ?? null,
         name:         m.name as string,
         calories:     m.calories as number,
         date:         m.date as string,
@@ -195,6 +214,7 @@ export async function fetchTimeline(
         protein:      m.protein as number | null,
         fat:          m.fat as number | null,
         carbs:        m.carbs as number | null,
+        photoUrl:     m.photo_url as string | null,
         note:         m.note as string | null,
         created_at:   m.created_at as string,
         reactions:    reactionsFor(m.id as string),
@@ -204,13 +224,14 @@ export async function fetchTimeline(
 
     // 運動アイテム
     const exerciseItems: TimelineItem[] = (exercisesData ?? []).map((e) => {
-      const user = (e.users as unknown) as { display_name: string | null; friend_code: string } | null;
+      const user = (e.users as unknown) as { display_name: string | null; friend_code: string; avatar_url: string | null } | null;
       return {
         id:               e.id as string,
         type:             'exercise',
         user_id:          e.user_id as string,
         display_name:     user?.display_name ?? null,
         friend_code:      user?.friend_code ?? '',
+        avatarUrl:        user?.avatar_url ?? null,
         name:             e.name as string,
         calories:         e.calories_burned as number,
         date:             e.date as string,

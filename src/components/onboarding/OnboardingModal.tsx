@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { loadSettings, saveSettings } from '@/lib/localRepository';
 
 const STORAGE_KEY = 'fmt_onboarding_done';
 
-const STEPS = [
+const INFO_STEPS = [
   {
     emoji: '📷',
     title: '食事をカメラで記録',
@@ -16,7 +17,7 @@ const STEPS = [
     emoji: '🏋️',
     title: 'ジムセッションを計測',
     description:
-      '「ジム」タブの START ボタンでタイマーが動き始めます。終了後に消費カロリーを入力して保存。目標（時間 or kcal）も設定できます。',
+      '「ジム」タブの START ボタンでタイマーが動き始めます。終了後に消費カロリーと種目・重量を入力して保存。目標（時間 or kcal）も設定できます。',
     accent: '#FF7043',
   },
   {
@@ -26,18 +27,18 @@ const STEPS = [
       '「データ」タブでは週次カロリーグラフ・PFC栄養素の進捗・体重推移グラフ・カレンダーを確認できます。JSON/CSVエクスポートにも対応。',
     accent: '#42A5F5',
   },
-  {
-    emoji: '🎯',
-    title: '目標を設定しよう',
-    description:
-      '食事タブ上部の「目標設定」から摂取カロリー目標を設定。体重目標・身長は「データ→体重→⚙️設定」から入力できます。さっそく始めましょう！',
-    accent: '#AB47BC',
-  },
 ] as const;
+
+const TOTAL_STEPS = INFO_STEPS.length + 1; // +1 for goal step
 
 export default function OnboardingModal() {
   const [show, setShow] = useState(false);
   const [step, setStep] = useState(0);
+
+  // Goal step inputs
+  const [currentWeight, setCurrentWeight] = useState('');
+  const [targetWeight, setTargetWeight] = useState('');
+  const [targetCalories, setTargetCalories] = useState('');
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !localStorage.getItem(STORAGE_KEY)) {
@@ -46,7 +47,7 @@ export default function OnboardingModal() {
   }, []);
 
   function handleNext() {
-    if (step < STEPS.length - 1) {
+    if (step < TOTAL_STEPS - 1) {
       setStep((s) => s + 1);
     } else {
       finish();
@@ -54,14 +55,27 @@ export default function OnboardingModal() {
   }
 
   function finish() {
+    // Save entered goals to AppSettings
+    const settings = loadSettings();
+    const cw = parseFloat(currentWeight);
+    const tw = parseFloat(targetWeight);
+    const tc = parseInt(targetCalories, 10);
+    saveSettings({
+      ...settings,
+      ...(isFinite(cw) && cw > 0 ? {} : {}), // currentWeight is for WeightEntry, not AppSettings
+      ...(isFinite(tw) && tw > 0 ? { targetWeightKg: tw } : {}),
+      ...(isFinite(tc) && tc > 0 ? { targetIntakeCalories: tc } : {}),
+    });
     localStorage.setItem(STORAGE_KEY, '1');
     setShow(false);
   }
 
   if (!show) return null;
 
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const isGoalStep = step === INFO_STEPS.length;
+  const isLast = step === TOTAL_STEPS - 1;
+  const current = !isGoalStep ? INFO_STEPS[step] : null;
+  const accent = current?.accent ?? '#AB47BC';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center">
@@ -74,31 +88,68 @@ export default function OnboardingModal() {
         {/* カラーヘッダー */}
         <div
           className="flex flex-col items-center justify-center pt-10 pb-8 px-6"
-          style={{ backgroundColor: current.accent + '18' }}
+          style={{ backgroundColor: accent + '18' }}
         >
-          <span className="text-6xl mb-3 select-none">{current.emoji}</span>
+          <span className="text-6xl mb-3 select-none">
+            {isGoalStep ? '🎯' : current!.emoji}
+          </span>
           <h2 className="text-xl font-black text-gray-900 text-center leading-snug">
-            {current.title}
+            {isGoalStep ? '目標を設定しよう' : current!.title}
           </h2>
         </div>
 
-        {/* 説明文 */}
+        {/* コンテンツ */}
         <div className="px-6 pt-5 pb-2">
-          <p className="text-sm text-gray-600 leading-relaxed text-center">
-            {current.description}
-          </p>
+          {isGoalStep ? (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-400 text-center mb-4">
+                あとから「データ」タブの設定でも変更できます
+              </p>
+              <div>
+                <label className="text-xs font-bold tracking-widest text-gray-400 block mb-1">現在の体重（kg）</label>
+                <input
+                  type="number" min={0} step={0.1} placeholder="例: 65.0"
+                  value={currentWeight}
+                  onChange={(e) => setCurrentWeight(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-base font-black text-gray-900 focus:outline-none focus:border-[#AB47BC] tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold tracking-widest text-gray-400 block mb-1">目標体重（kg）</label>
+                <input
+                  type="number" min={0} step={0.1} placeholder="例: 60.0"
+                  value={targetWeight}
+                  onChange={(e) => setTargetWeight(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-base font-black text-gray-900 focus:outline-none focus:border-[#AB47BC] tabular-nums"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold tracking-widest text-gray-400 block mb-1">目標摂取カロリー（kcal/日）</label>
+                <input
+                  type="number" min={0} step={50} placeholder="例: 1800"
+                  value={targetCalories}
+                  onChange={(e) => setTargetCalories(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-base font-black text-gray-900 focus:outline-none focus:border-[#AB47BC] tabular-nums"
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600 leading-relaxed text-center">
+              {current!.description}
+            </p>
+          )}
         </div>
 
         {/* ステップインジケーター */}
         <div className="flex justify-center gap-2 py-4">
-          {STEPS.map((_, i) => (
+          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
             <div
               key={i}
               className="rounded-full transition-all duration-300"
               style={{
                 width: i === step ? '20px' : '8px',
                 height: '8px',
-                backgroundColor: i === step ? current.accent : '#E5E7EB',
+                backgroundColor: i === step ? accent : '#E5E7EB',
               }}
             />
           ))}
@@ -110,7 +161,7 @@ export default function OnboardingModal() {
             type="button"
             onClick={handleNext}
             className="w-full py-4 rounded-2xl text-white font-black text-base tracking-wide transition-colors active:scale-95"
-            style={{ backgroundColor: current.accent }}
+            style={{ backgroundColor: accent }}
           >
             {isLast ? 'さっそく始める 🚀' : '次へ →'}
           </button>
