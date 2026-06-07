@@ -225,8 +225,29 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
                   {analyzing ? <><span className="animate-spin">⏳</span> 解析中...</> : <>✨ 写真でカロリーを推定</>}
                 </button>
                 {analyzeResult && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-1">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 space-y-2">
                     <p className="font-semibold">✅ 解析結果（参考値・自由に修正できます）</p>
+                    {analyzeResult.candidates && analyzeResult.candidates.length > 0 && (
+                      <div>
+                        <p className="text-[11px] text-green-700 mb-1.5">料理名の候補（タップで選択）</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {analyzeResult.candidates.map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => { setName(c); setNameError(''); }}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                                name === c
+                                  ? 'bg-[#4CAF50] text-white border-[#4CAF50]'
+                                  : 'bg-white text-green-800 border-green-300 hover:bg-green-100'
+                              }`}
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {analyzeResult.confidence !== null && (
                       <p>信頼度: {Math.round(analyzeResult.confidence * 100)}%</p>
                     )}

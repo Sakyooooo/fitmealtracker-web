@@ -53,6 +53,7 @@ export type AppSettings = {
 
 export type MealAnalysisResult = {
   dishName: string | null;
+  candidates: string[] | null;   // 料理名の候補（確信度順・最大3）
   estimatedCalories: number | null;
   confidence: number | null;
   notes: string | null;

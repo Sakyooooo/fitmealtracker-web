@@ -1,11 +1,12 @@
 import { MealAnalysisResult } from './types';
 
 export const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // estimatedCalories を null にして誤情報（500kcal）を与えない
 export const GEMINI_FALLBACK: MealAnalysisResult = {
   dishName: null,
+  candidates: null,
   estimatedCalories: null,
   confidence: 0,
   notes: 'AI推定に失敗しました。値を手動で入力してください。',
