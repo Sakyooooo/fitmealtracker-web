@@ -157,7 +157,7 @@ export function useFriends(): UseFriendsReturn {
 
     if (findErr) { setError('ユーザーの検索に失敗しました'); return; }
     if (!target)  { setError('そのコードのユーザーが見つかりませんでした'); return; }
-    if (target.id === userId) { setError('自分自身には申請できません'); return; }
+    if (target.id === userId) { setError('自分自身は追加できません'); return; }
 
     const { data: existing } = await supabase
       .from('friendships')
@@ -168,19 +168,25 @@ export function useFriends(): UseFriendsReturn {
       )
       .maybeSingle();
 
+    // 承認制なし: 追加した時点で即フレンド（双方に相互表示）
     if (existing) {
-      const s = (existing as { status: string }).status;
-      if (s === 'accepted') { setError('すでにフレンドです'); return; }
-      if (s === 'pending')  { setError('すでに申請中です'); return; }
+      const ex = existing as { id: string; status: string };
+      if (ex.status === 'accepted') { setError('すでにフレンドです'); return; }
+      // pending / blocked の既存行は accepted に昇格
+      const { error: upErr } = await supabase
+        .from('friendships').update({ status: 'accepted' }).eq('id', ex.id);
+      if (upErr) { setError('フレンドの追加に失敗しました'); return; }
+      await loadFriendships(userId);
+      return;
     }
 
     const { error: insertErr } = await supabase.from('friendships').insert({
       requester_id: userId,
       receiver_id: target.id,
-      status: 'pending',
+      status: 'accepted',
     });
 
-    if (insertErr) { setError('申請の送信に失敗しました'); return; }
+    if (insertErr) { setError('フレンドの追加に失敗しました'); return; }
     await loadFriendships(userId);
   }, [userId, loadFriendships]);
 

@@ -33,11 +33,7 @@ export default function AddFriendInput({ onAdd, error, onClearError }: Props) {
   }
 
   return (
-    <div className="px-4 pb-6">
-      <p className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4">
-        フレンドを追加
-      </p>
-
+    <div className="pb-2">
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <input
@@ -69,7 +65,7 @@ export default function AddFriendInput({ onAdd, error, onClearError }: Props) {
                      tracking-wide transition-all active:scale-95
                      disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {loading ? '申請中...' : '申請を送る'}
+          {loading ? '追加中...' : '追加する'}
         </button>
       </form>
     </div>

@@ -75,9 +75,9 @@ export default function FriendsPage() {
   const {
     enabled, loading, connectionError,
     userId, friendCode, displayName,
-    friends, pendingReceived,
+    friends,
     error,
-    addFriend, acceptFriend, blockOrReject, updateNickname, clearError,
+    addFriend, updateNickname, clearError,
   } = useFriends();
 
   const { items: timeline, loading: tlLoading, load: loadTimeline, react } = useTimeline();
@@ -94,10 +94,20 @@ export default function FriendsPage() {
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const [myAvatarUrl, setMyAvatarUrl] = useState<string | undefined>(undefined);
 
-  const pendingCount = pendingReceived.length;
 
   // 自分のプロフィール画像（ローカル設定）を読み込む
   useEffect(() => { setMyAvatarUrl(loadSettings().avatarUrl); }, []);
+
+  // QRディープリンク（/friends?add=CODE）で即フレンド追加
+  useEffect(() => {
+    if (!userId) return;
+    const add = new URLSearchParams(window.location.search).get('add');
+    if (add && /^FMT-[A-Z0-9]{4}$/i.test(add)) {
+      addFriend(add.toUpperCase()).finally(() => {
+        window.history.replaceState(null, '', '/friends');
+      });
+    }
+  }, [userId, addFriend]);
 
   // 自分の投稿も含めてタイムライン取得
   useEffect(() => {
@@ -310,52 +320,6 @@ export default function FriendsPage() {
           </div>
         </div>
 
-        {/* ── フレンド申請（承認 / 拒否） ── */}
-        {pendingReceived.length > 0 && (
-          <div className="px-4 pb-3">
-            <p className="text-[10px] font-black text-gray-400 tracking-widest uppercase mb-2">
-              フレンド申請（{pendingReceived.length}）
-            </p>
-            <div className="space-y-2">
-              {pendingReceived.map((f) => {
-                const name = f.friend.display_name ?? f.friend.friend_code;
-                const initial = name.charAt(0).toUpperCase();
-                return (
-                  <div key={f.id} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 bg-[#FAF0FC]">
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
-                      style={{ background: ACCENT }}>
-                      {f.friend.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={f.friend.avatar_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-base font-black text-white">{initial}</span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black text-gray-900 truncate">{name}</p>
-                      <p className="text-[10px] font-bold tracking-widest" style={{ color: ACCENT }}>
-                        {f.friend.friend_code}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button type="button" onClick={() => acceptFriend(f.id)}
-                        className="px-3.5 py-1.5 text-white text-xs font-black rounded-lg active:scale-95 transition-transform"
-                        style={{ background: ACCENT }}>
-                        承認
-                      </button>
-                      <button type="button" onClick={() => blockOrReject(f.id)}
-                        className="px-3 py-1.5 bg-gray-100 text-gray-500 text-xs font-bold rounded-lg active:scale-95 transition-transform">
-                        拒否
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="h-px bg-gray-100 mt-3" />
-          </div>
-        )}
-
         {/* ── フレンドアバターストリップ（Timeline タブのフィルター） ── */}
         {tab === 'timeline' && (
         <>
@@ -374,14 +338,10 @@ export default function FriendsPage() {
             {/* CONNECT */}
             <button type="button" onClick={() => setShowConnect(true)}
               className="flex flex-col items-center gap-1 flex-shrink-0">
-              <div className="w-14 h-14 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center relative">
+              <div className="w-14 h-14 rounded-full border-2 border-dashed border-gray-200 flex items-center justify-center">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>
-                {pendingCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full text-white text-[10px] font-black flex items-center justify-center"
-                    style={{ background: ACCENT }}>{pendingCount}</span>
-                )}
               </div>
               <span className="text-[10px] font-bold text-gray-300 tracking-wide">追加</span>
             </button>
@@ -473,6 +433,7 @@ export default function FriendsPage() {
         onAdd={addFriend}
         error={error}
         onClearError={clearError}
+        myCode={friendCode}
       />
       <NicknameModal
         open={showNickname}
