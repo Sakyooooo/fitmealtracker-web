@@ -2,15 +2,15 @@
  * デモ用のダミーフレンド & タイムライン投稿（テスト表示専用）
  *
  * Supabase には一切書き込まず、クライアント側で friends ページに合流させる。
- * 本番で無効化したい場合は DEMO_FRIENDS_ENABLED を false にする
- * （または環境変数 NEXT_PUBLIC_DEMO_FRIENDS=off）。
+ * 既定は無効（本番にダミーを出さない）。テストで表示したいときだけ
+ * 環境変数 NEXT_PUBLIC_DEMO_FRIENDS=on を設定する。
  */
 
 import type { GlobeUser } from '@/components/friends/FriendsGlobe';
 import type { TimelineItem } from '@/lib/types';
 
-/** テスト用フラグ。NEXT_PUBLIC_DEMO_FRIENDS=off で明示的に無効化できる。 */
-export const DEMO_FRIENDS_ENABLED = process.env.NEXT_PUBLIC_DEMO_FRIENDS !== 'off';
+/** テスト用フラグ。既定 OFF。NEXT_PUBLIC_DEMO_FRIENDS=on のときだけ有効。 */
+export const DEMO_FRIENDS_ENABLED = process.env.NEXT_PUBLIC_DEMO_FRIENDS === 'on';
 
 /** id プレフィックス（実データと区別し、リアクションをローカル処理するため） */
 export const DEMO_PREFIX = 'demo-';
