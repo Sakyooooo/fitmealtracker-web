@@ -1,10 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
-import { MealCategory, MealEntry, MealAnalysisResult } from '@/lib/types';
+import { MealCategory, MealEntry, MealAnalysisResult, ProductLookupResult } from '@/lib/types';
 import { todayString } from '@/lib/stats';
 import { analyzeWithGemini } from '@/lib/gemini';
+import { lookupProductByBarcode } from '@/lib/openFoodFacts';
+
+const BarcodeScanner = dynamic(() => import('@/components/meal/BarcodeScanner'), { ssr: false });
 
 type Mode = 'quick' | 'detail';
 
@@ -46,6 +50,13 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   const [analyzeResult, setAnalyzeResult] = useState<MealAnalysisResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── バーコード（市販品の栄養取得） ───────────────────────────────────────────
+  const [showBarcode, setShowBarcode] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [productLoading, setProductLoading] = useState(false);
+  const [productResult, setProductResult] = useState<ProductLookupResult | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
+
   // ── バリデーションエラー ──────────────────────────────────────────────────────
   const [nameError, setNameError] = useState('');
   const [calError, setCalError] = useState('');
@@ -58,6 +69,8 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     setShowPfc(false); setPhotoFile(null);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null); setAnalyzeResult(null);
+    setShowBarcode(false); setBarcodeInput(''); setProductResult(null);
+    setProductError(null); setProductLoading(false);
     setNameError(''); setCalError('');
   }
 
@@ -108,6 +121,35 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  async function lookupProduct(code: string) {
+    const digits = code.replace(/\D/g, '');
+    if (digits.length < 8) { setProductError('バーコードの桁数が正しくありません'); return; }
+    setProductLoading(true);
+    setProductError(null);
+    try {
+      const r = await lookupProductByBarcode(digits);
+      if (!r.found) {
+        setProductResult(null);
+        setProductError('Open Food Facts に登録がありませんでした。手動で入力してください。');
+        return;
+      }
+      setProductResult(r);
+      setShowBarcode(false);
+      if (r.name) setName(r.name);
+      if (r.calories != null) setCalories(String(r.calories));
+      if (r.protein != null) { setProtein(String(r.protein)); setShowPfc(true); }
+      if (r.fat != null) { setFat(String(r.fat)); setShowPfc(true); }
+      if (r.carbs != null) { setCarbs(String(r.carbs)); setShowPfc(true); }
+    } finally {
+      setProductLoading(false);
+    }
+  }
+
+  function handleBarcodeResult(code: string) {
+    setBarcodeInput(code);
+    lookupProduct(code);
   }
 
   function handleSave() {
@@ -280,6 +322,75 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
                 <span className="text-3xl">📷</span>
                 <span className="text-sm">写真を選択</span>
               </button>
+            )}
+          </div>
+
+          {/* ── バーコード（市販品の栄養取得） ── */}
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => { setShowBarcode((v) => !v); setProductError(null); }}
+              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-sm font-semibold text-gray-500 hover:border-[#4CAF50] hover:text-[#4CAF50] transition-colors flex items-center justify-center gap-2"
+            >
+              📦 バーコードで栄養を取得（市販品）
+            </button>
+
+            {showBarcode && (
+              <div className="mt-3 space-y-3 bg-gray-50 rounded-xl p-3">
+                <BarcodeScanner onResult={handleBarcodeResult} onClose={() => setShowBarcode(false)} />
+                <div className="flex items-center gap-2">
+                  <input
+                    className="input flex-1"
+                    inputMode="numeric"
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    placeholder="バーコード番号を手入力"
+                    maxLength={14}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => lookupProduct(barcodeInput)}
+                    disabled={productLoading}
+                    className="px-4 py-2 bg-[#4CAF50] text-white rounded-xl text-sm font-bold disabled:opacity-60 shrink-0"
+                  >
+                    {productLoading ? '…' : '検索'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {productLoading && !showBarcode && (
+              <p className="text-xs text-gray-400 mt-2 text-center">商品情報を取得中…</p>
+            )}
+            {productError && <p className="text-xs text-amber-600 mt-2">{productError}</p>}
+            {productResult && productResult.found && (
+              <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 flex gap-3 items-center">
+                {productResult.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={productResult.imageUrl}
+                    alt={productResult.name ?? ''}
+                    className="w-14 h-14 object-cover rounded-lg bg-white shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold truncate">{productResult.name ?? '商品'}</p>
+                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-green-600 text-white text-[10px] font-bold">
+                      📦 Open Food Facts
+                    </span>
+                  </div>
+                  {productResult.brand && (
+                    <p className="text-[11px] text-green-700 truncate">{productResult.brand}</p>
+                  )}
+                  <p className="text-[11px] text-green-700 mt-0.5">
+                    {productResult.servingLabel}：{productResult.calories ?? '—'}kcal
+                    {productResult.protein != null && ` / P${productResult.protein}`}
+                    {productResult.fat != null && ` F${productResult.fat}`}
+                    {productResult.carbs != null && ` C${productResult.carbs}`}
+                  </p>
+                </div>
+              </div>
             )}
           </div>
 

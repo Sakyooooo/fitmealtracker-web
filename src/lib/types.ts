@@ -65,6 +65,22 @@ export type MealAnalysisResult = {
   servingLabel?: string | null;  // 成分表の基準量（例: "1杯"）
 };
 
+/** Open Food Facts のバーコード検索結果（市販品の栄養） */
+export type ProductLookupResult = {
+  found: boolean;
+  barcode: string | null;
+  name: string | null;
+  brand: string | null;
+  imageUrl: string | null;
+  servingLabel: string | null;   // 例: "30 g" / "100gあたり"
+  basis: 'serving' | '100g' | null;
+  calories: number | null;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+  source: 'off';
+};
+
 export type DayStat = {
   date: string;
   dayLabel: string;
