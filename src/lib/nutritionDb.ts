@@ -160,6 +160,31 @@ export function lookupNutrition(name: string | null | undefined): NutritionEntry
   return best;
 }
 
+/**
+ * 料理名のクエリにマッチする料理を複数返す（食事名入力のサジェスト用）。
+ * キーワードの双方向部分一致＋名前一致で拾い、重複（同一料理）は除く。
+ */
+export function searchDishes(query: string, limit = 6): NutritionEntry[] {
+  const q = normalize(query);
+  if (q.length < 1) return [];
+
+  const out: NutritionEntry[] = [];
+  const seen = new Set<string>();
+  for (const entry of TABLE) {
+    if (out.length >= limit) break;
+    if (seen.has(entry.name)) continue;
+    const nameKey = normalize(entry.name);
+    const hit =
+      nameKey.includes(q) ||
+      entry.keywords.some((kw) => {
+        const k = normalize(kw);
+        return k.length >= 1 && (k.includes(q) || q.includes(k));
+      });
+    if (hit) { out.push(entry); seen.add(entry.name); }
+  }
+  return out;
+}
+
 function portionFactor(portion?: string | null): number {
   switch ((portion ?? '').toLowerCase()) {
     case 'small': return 0.7;

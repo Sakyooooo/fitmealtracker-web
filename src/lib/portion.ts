@@ -5,6 +5,7 @@ import {
   MyFood,
   NutritionBasis,
 } from './types';
+import { NutritionEntry } from './nutritionDb';
 
 const round1 = (x: number | null): number | null =>
   x == null ? null : Math.round(x * 10) / 10;
@@ -58,6 +59,18 @@ export function basisFromProduct(r: ProductLookupResult): NutritionBasis | null 
     unitLabel: r.servingLabel ?? '個',
     quantity: 1,
     origin: 'off',
+  };
+}
+
+/** 料理DB（nutritionDb）の料理を基準量にする（1人前）。 */
+export function basisFromDish(e: NutritionEntry): NutritionBasis {
+  return {
+    name: e.name,
+    base: { kcal: e.kcal, p: e.p, f: e.f, c: e.c },
+    unit: 'serving',
+    unitLabel: '人前',
+    quantity: 1,
+    origin: 'db',
   };
 }
 

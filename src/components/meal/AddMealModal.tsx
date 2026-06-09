@@ -11,10 +11,13 @@ import { todayString } from '@/lib/stats';
 import { analyzeWithGemini } from '@/lib/gemini';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
 import { searchFoods } from '@/lib/foodComposition';
+import { searchDishes } from '@/lib/nutritionDb';
 import {
-  scaleNutrition, basisFromAnalysis, basisFromProduct, basisFromFood, basisFromMyFood,
+  scaleNutrition, basisFromAnalysis, basisFromProduct, basisFromFood, basisFromMyFood, basisFromDish,
 } from '@/lib/portion';
 import { useMyFoods } from '@/hooks/useMyFoods';
+
+type NameSuggestion = { key: string; label: string; sub: string; basis: NutritionBasis };
 
 const BarcodeScanner = dynamic(() => import('@/components/meal/BarcodeScanner'), { ssr: false });
 
@@ -88,6 +91,10 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   const [basis, setBasis] = useState<NutritionBasis | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
+  // 食事名入力からのサジェスト（料理DB＋マイ食品＋成分表を横断）
+  const [nameSuggestions, setNameSuggestions] = useState<NameSuggestion[]>([]);
+  const nameQueryRef = useRef('');
+
   // ── バリデーションエラー ──────────────────────────────────────────────────────
   const [nameError, setNameError] = useState('');
   const [calError, setCalError] = useState('');
@@ -104,6 +111,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     setProductError(null); setProductLoading(false); setBarcodeForRegister(null);
     setShowFoodSearch(false); setFoodQuery(''); setFoodResults([]);
     setShowMyFoods(false); setBasis(null); setSavedMsg(null);
+    setNameSuggestions([]); nameQueryRef.current = '';
     setNameError(''); setCalError('');
   }
 
@@ -266,6 +274,69 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     setShowMyFoods(false);
   }
 
+  // ── 食事名サジェスト（料理DB＋マイ食品＋成分表を横断） ────────────────────────
+  function handleNameInput(v: string) {
+    setName(v);
+    if (v.trim()) setNameError('');
+    updateNameSuggestions(v);
+  }
+
+  async function updateNameSuggestions(q: string) {
+    const query = q.trim();
+    nameQueryRef.current = query;
+    if (query.length < 1) { setNameSuggestions([]); return; }
+
+    const seen = new Set<string>();
+    const list: NameSuggestion[] = [];
+    const push = (label: string, sub: string, b: NutritionBasis) => {
+      if (seen.has(label) || list.length >= 8) return;
+      seen.add(label); list.push({ key: label, label, sub, basis: b });
+    };
+    // 1) 料理DB（牛丼・麻婆豆腐など）
+    for (const d of searchDishes(query, 5)) push(d.name, `${d.kcal}kcal / ${d.serving}`, basisFromDish(d));
+    // 2) マイ食品（名前一致）
+    for (const f of myFoods.filter((m) => m.name.includes(query)).slice(0, 4)) {
+      push(f.name, `${f.calories}kcal · マイ食品`, basisFromMyFood(f));
+    }
+    setNameSuggestions([...list]); // 同期分を即時表示
+
+    // 3) 成分表（非同期・古いクエリなら破棄）
+    const foods = await searchFoods(query, 5);
+    if (nameQueryRef.current !== query) return;
+    for (const it of foods) push(it.name, `${it.kcal}kcal / 100g`, basisFromFood(it));
+    setNameSuggestions([...list]);
+  }
+
+  function pickSuggestion(s: NameSuggestion) {
+    setName(s.label); setNameError('');
+    applyBasis(s.basis);
+    setNameSuggestions([]);
+    nameQueryRef.current = '';
+  }
+
+  function renderNameSuggestions() {
+    if (nameSuggestions.length === 0) return null;
+    return (
+      <div className="-mt-2 mb-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1">候補（タップでカロリーを反映）</p>
+        <ul className="max-h-44 overflow-y-auto divide-y divide-gray-100">
+          {nameSuggestions.map((s) => (
+            <li key={s.key}>
+              <button
+                type="button"
+                onClick={() => pickSuggestion(s)}
+                className="w-full text-left py-2 px-3 hover:bg-green-50 flex justify-between gap-2 items-center"
+              >
+                <span className="text-xs text-gray-700 truncate">{s.label}</span>
+                <span className="text-[11px] text-gray-400 shrink-0">{s.sub}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   function handleSave() {
     // インラインバリデーション
     let valid = true;
@@ -319,12 +390,13 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
             <input
               className={`input ${nameError ? 'border-red-400 focus:border-red-400' : ''}`}
               value={name}
-              onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }}
+              onChange={(e) => handleNameInput(e.target.value)}
               placeholder="例: サラダチキン・牛丼"
               maxLength={60}
               autoFocus
             />
           </Field>
+          {renderNameSuggestions()}
 
           <Field label="カロリー（kcal）" error={calError}>
             <input
@@ -619,11 +691,12 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
             <input
               className={`input ${nameError ? 'border-red-400 focus:border-red-400' : ''}`}
               value={name}
-              onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }}
+              onChange={(e) => handleNameInput(e.target.value)}
               placeholder="例: サラダチキン・野菜スープ"
               maxLength={60}
             />
           </Field>
+          {renderNameSuggestions()}
 
           {/* ── 分量スライダー（栄養ソース反映後に表示） ── */}
           {basis && (
