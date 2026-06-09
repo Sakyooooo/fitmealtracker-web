@@ -1,18 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ProductLookupResult } from '@/lib/types';
-
-// ── Security: origin check（analyze-meal と同じ方針） ──────────────────────────
-function isAllowedOrigin(origin: string | null): boolean {
-  if (!origin) return false;
-  const allowed = process.env.ALLOWED_ORIGIN;
-  if (allowed) return origin === allowed;
-  const vercelUrl = process.env.VERCEL_URL;
-  if (vercelUrl) return origin === `https://${vercelUrl}`;
-  if (process.env.NODE_ENV === 'development') {
-    return origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
-  }
-  return false;
-}
+import { isAllowedRequestOrigin } from '@/lib/apiOrigin';
 
 // ── Security: 簡易レート制限（in-memory・cold start でリセット） ────────────────
 const RATE_MAX = 30;
@@ -60,7 +48,7 @@ function kcalFrom(kcal: unknown, kj: unknown): number | null {
 const round1 = (x: number | null): number | null => (x == null ? null : Math.round(x * 10) / 10);
 
 export async function POST(request: Request) {
-  if (!isAllowedOrigin(request.headers.get('origin'))) {
+  if (!isAllowedRequestOrigin(request)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? '127.0.0.1';

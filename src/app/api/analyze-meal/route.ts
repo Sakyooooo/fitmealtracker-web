@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GEMINI_ENDPOINT, GEMINI_FALLBACK, extractJson } from '@/lib/gemini';
 import { MealAnalysisResult } from '@/lib/types';
 import { applyNutritionDb } from '@/lib/nutritionDb';
+import { isAllowedRequestOrigin } from '@/lib/apiOrigin';
 
 // ── Security: feature flag ────────────────────────────────────────────────────
 // Set MEAL_ANALYSIS_ENABLED=false in environment to disable the endpoint entirely.
@@ -48,27 +49,6 @@ function checkRateLimit(ip: string): boolean {
   if (entry.count >= RATE_LIMIT_MAX) return false;
   entry.count++;
   return true;
-}
-
-// ── Security: origin check ────────────────────────────────────────────────────
-// Only allow requests from the same origin (the app itself).
-function isAllowedOrigin(origin: string | null): boolean {
-  if (!origin) return false;
-
-  // Explicit allowlist via env (e.g. "https://your-app.vercel.app")
-  const allowed = process.env.ALLOWED_ORIGIN;
-  if (allowed) return origin === allowed;
-
-  // Vercel auto-sets VERCEL_URL for preview/production deployments
-  const vercelUrl = process.env.VERCEL_URL;
-  if (vercelUrl) return origin === `https://${vercelUrl}`;
-
-  // Local development
-  if (process.env.NODE_ENV === 'development') {
-    return origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1');
-  }
-
-  return false;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -144,9 +124,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'meal analysis is disabled' }, { status: 403 });
   }
 
-  // 2. Origin check
-  const origin = request.headers.get('origin');
-  if (!isAllowedOrigin(origin)) {
+  // 2. Origin check（同一オリジン / 許可ドメインのみ）
+  if (!isAllowedRequestOrigin(request)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
