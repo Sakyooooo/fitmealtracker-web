@@ -6,6 +6,8 @@ import {
   ExerciseEntry,
   GymSession,
   MealEntry,
+  MyFood,
+  ProductLookupResult,
   WeightEntry,
 } from './types';
 
@@ -15,6 +17,8 @@ const KEYS = {
   weights: 'fmt_weight_records',
   settings: 'fmt_settings',
   gymSessions: 'fmt_gym_sessions',
+  myFoods: 'fmt_my_foods',
+  offCache: 'fmt_off_cache',
 } as const;
 
 type NewMealEntry = Omit<MealEntry, 'id' | 'photoUri' | 'photoId'> & {
@@ -182,4 +186,63 @@ export function loadSettings(): AppSettings {
 
 export function saveSettings(settings: AppSettings): void {
   save(KEYS.settings, settings);
+}
+
+// ── マイ食品（ローカル保存。Supabase 同期は useMyFoods 側で実施） ──────────────
+export function fetchMyFoodsLocal(): MyFood[] {
+  return load<MyFood[]>(KEYS.myFoods, []);
+}
+
+export function saveMyFoodsLocal(foods: MyFood[]): void {
+  save(KEYS.myFoods, foods);
+}
+
+export function upsertMyFoodLocal(food: MyFood): MyFood[] {
+  const foods = fetchMyFoodsLocal();
+  const idx = foods.findIndex((f) => f.id === food.id);
+  const next = idx >= 0
+    ? foods.map((f) => (f.id === food.id ? food : f))
+    : [food, ...foods];
+  save(KEYS.myFoods, next);
+  return next;
+}
+
+export function deleteMyFoodLocal(id: string): MyFood[] {
+  const next = fetchMyFoodsLocal().filter((f) => f.id !== id);
+  save(KEYS.myFoods, next);
+  return next;
+}
+
+export function findMyFoodByBarcode(barcode: string): MyFood | null {
+  const code = barcode.replace(/\D/g, '');
+  if (!code) return null;
+  return fetchMyFoodsLocal().find((f) => (f.barcode ?? '').replace(/\D/g, '') === code) ?? null;
+}
+
+export function newMyFoodId(): string {
+  return generateId();
+}
+
+// ── Open Food Facts 結果のローカルキャッシュ（高速化・オフライン耐性） ──────────
+const OFF_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日
+type OffCacheEntry = { result: ProductLookupResult; cachedAt: number };
+
+export function getCachedProduct(barcode: string): ProductLookupResult | null {
+  const map = load<Record<string, OffCacheEntry>>(KEYS.offCache, {});
+  const entry = map[barcode];
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > OFF_CACHE_TTL_MS) return null;
+  return entry.result;
+}
+
+export function setCachedProduct(barcode: string, result: ProductLookupResult): void {
+  const map = load<Record<string, OffCacheEntry>>(KEYS.offCache, {});
+  map[barcode] = { result, cachedAt: Date.now() };
+  // 肥大化防止: 200件を超えたら古いものから間引く
+  const keys = Object.keys(map);
+  if (keys.length > 200) {
+    keys.sort((a, b) => map[a].cachedAt - map[b].cachedAt);
+    for (const k of keys.slice(0, keys.length - 200)) delete map[k];
+  }
+  save(KEYS.offCache, map);
 }

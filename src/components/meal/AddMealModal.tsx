@@ -3,12 +3,33 @@
 import { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
-import { MealCategory, MealEntry, MealAnalysisResult, ProductLookupResult } from '@/lib/types';
+import {
+  MealCategory, MealEntry, MealAnalysisResult, ProductLookupResult,
+  FoodCompositionItem, NutritionBasis,
+} from '@/lib/types';
 import { todayString } from '@/lib/stats';
 import { analyzeWithGemini } from '@/lib/gemini';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
+import { searchFoods } from '@/lib/foodComposition';
+import {
+  scaleNutrition, basisFromAnalysis, basisFromProduct, basisFromFood, basisFromMyFood,
+} from '@/lib/portion';
+import { useMyFoods } from '@/hooks/useMyFoods';
 
 const BarcodeScanner = dynamic(() => import('@/components/meal/BarcodeScanner'), { ssr: false });
+
+const ORIGIN_LABEL: Record<NutritionBasis['origin'], string> = {
+  ai: '🤖 AI推定',
+  db: '📋 成分表(料理)',
+  off: '📦 Open Food Facts',
+  composition: '🥗 食品成分表',
+  myfood: '⭐ マイ食品',
+};
+
+function parseNum(s: string): number | null {
+  const v = parseFloat(s);
+  return !isNaN(v) && v >= 0 ? v : null;
+}
 
 type Mode = 'quick' | 'detail';
 
@@ -56,6 +77,16 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   const [productLoading, setProductLoading] = useState(false);
   const [productResult, setProductResult] = useState<ProductLookupResult | null>(null);
   const [productError, setProductError] = useState<string | null>(null);
+  const [barcodeForRegister, setBarcodeForRegister] = useState<string | null>(null);
+
+  // ── 食品検索（成分表）/ マイ食品 / 分量スライダー ─────────────────────────────
+  const { myFoods, addMyFood, deleteMyFood } = useMyFoods();
+  const [showFoodSearch, setShowFoodSearch] = useState(false);
+  const [foodQuery, setFoodQuery] = useState('');
+  const [foodResults, setFoodResults] = useState<FoodCompositionItem[]>([]);
+  const [showMyFoods, setShowMyFoods] = useState(false);
+  const [basis, setBasis] = useState<NutritionBasis | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
   // ── バリデーションエラー ──────────────────────────────────────────────────────
   const [nameError, setNameError] = useState('');
@@ -70,7 +101,9 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null); setAnalyzeResult(null);
     setShowBarcode(false); setBarcodeInput(''); setProductResult(null);
-    setProductError(null); setProductLoading(false);
+    setProductError(null); setProductLoading(false); setBarcodeForRegister(null);
+    setShowFoodSearch(false); setFoodQuery(''); setFoodResults([]);
+    setShowMyFoods(false); setBasis(null); setSavedMsg(null);
     setNameError(''); setCalError('');
   }
 
@@ -107,17 +140,39 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     setAnalyzeResult(null);
   }
 
+  // 栄養ソースを「基準量＋単位」として適用し、各入力欄へ反映する。
+  function applyBasis(b: NutritionBasis) {
+    setBasis(b);
+    const v = scaleNutrition(b);
+    setCalories(String(v.kcal)); setCalError('');
+    if (v.p != null) setProtein(String(v.p));
+    if (v.f != null) setFat(String(v.f));
+    if (v.c != null) setCarbs(String(v.c));
+    if (v.p != null || v.f != null || v.c != null) setShowPfc(true);
+  }
+
+  // 分量スライダー変更 → 栄養を再計算して反映。
+  function updateQuantity(q: number) {
+    if (!basis) return;
+    const nb = { ...basis, quantity: q };
+    setBasis(nb);
+    const v = scaleNutrition(nb);
+    setCalories(String(v.kcal));
+    if (v.p != null) setProtein(String(v.p));
+    if (v.f != null) setFat(String(v.f));
+    if (v.c != null) setCarbs(String(v.c));
+  }
+
   async function handleAnalyze() {
     if (!photoFile) return;
     setAnalyzing(true);
     try {
       const result = await analyzeWithGemini(photoFile);
       setAnalyzeResult(result);
-      if (result.estimatedCalories !== null) setCalories(String(result.estimatedCalories));
+      const b = basisFromAnalysis(result);
+      if (b) applyBasis(b);
+      else if (result.estimatedCalories !== null) setCalories(String(result.estimatedCalories));
       if (result.dishName && !name.trim()) setName(result.dishName);
-      if (result.protein !== null) { setProtein(String(result.protein)); setShowPfc(true); }
-      if (result.fat !== null) { setFat(String(result.fat)); setShowPfc(true); }
-      if (result.carbs !== null) { setCarbs(String(result.carbs)); setShowPfc(true); }
     } finally {
       setAnalyzing(false);
     }
@@ -128,20 +183,31 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     if (digits.length < 8) { setProductError('バーコードの桁数が正しくありません'); return; }
     setProductLoading(true);
     setProductError(null);
+    setBarcodeForRegister(null);
     try {
+      // 1) マイ食品（バーコード一致）を最優先
+      const my = myFoods.find((f) => (f.barcode ?? '').replace(/\D/g, '') === digits);
+      if (my) {
+        setProductResult(null);
+        setShowBarcode(false);
+        setName(my.name); setNameError('');
+        applyBasis(basisFromMyFood(my));
+        setSavedMsg(`マイ食品「${my.name}」を反映しました`);
+        return;
+      }
+      // 2) ローカルキャッシュ → 3) Open Food Facts
       const r = await lookupProductByBarcode(digits);
       if (!r.found) {
         setProductResult(null);
-        setProductError('Open Food Facts に登録がありませんでした。手動で入力してください。');
+        setBarcodeForRegister(digits);
+        setProductError('Open Food Facts に登録がありませんでした。手入力して「マイ食品に登録」すると次回から自動補完されます。');
         return;
       }
       setProductResult(r);
       setShowBarcode(false);
-      if (r.name) setName(r.name);
-      if (r.calories != null) setCalories(String(r.calories));
-      if (r.protein != null) { setProtein(String(r.protein)); setShowPfc(true); }
-      if (r.fat != null) { setFat(String(r.fat)); setShowPfc(true); }
-      if (r.carbs != null) { setCarbs(String(r.carbs)); setShowPfc(true); }
+      if (r.name) { setName(r.name); setNameError(''); }
+      const b = basisFromProduct(r);
+      if (b) applyBasis(b);
     } finally {
       setProductLoading(false);
     }
@@ -150,6 +216,54 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   function handleBarcodeResult(code: string) {
     setBarcodeInput(code);
     lookupProduct(code);
+  }
+
+  // ── 食品検索（成分表） ──────────────────────────────────────────────────────
+  async function handleFoodQuery(q: string) {
+    setFoodQuery(q);
+    if (q.trim().length < 1) { setFoodResults([]); return; }
+    setFoodResults(await searchFoods(q, 20));
+  }
+
+  function pickFood(item: FoodCompositionItem) {
+    setName(item.name); setNameError('');
+    applyBasis(basisFromFood(item));
+    setShowFoodSearch(false); setFoodQuery(''); setFoodResults([]);
+  }
+
+  // ── マイ食品 ────────────────────────────────────────────────────────────────
+  function registerMyFood() {
+    if (!name.trim()) { setNameError('食事名を入力してください'); return; }
+    const cal = parseInt(calories, 10);
+    if (isNaN(cal) || cal < 0) { setCalError('カロリーを入力してください'); return; }
+
+    const food = basis
+      ? addMyFood({
+          name: name.trim(),
+          barcode: barcodeForRegister,
+          basis: basis.unit,
+          servingLabel: basis.unit === 'serving' ? basis.unitLabel : '100gあたり',
+          calories: Math.round(basis.base.kcal),
+          protein: basis.base.p, fat: basis.base.f, carbs: basis.base.c,
+        })
+      : addMyFood({
+          name: name.trim(),
+          barcode: barcodeForRegister,
+          basis: 'serving',
+          servingLabel: '1食',
+          calories: cal,
+          protein: parseNum(protein), fat: parseNum(fat), carbs: parseNum(carbs),
+        });
+    setSavedMsg(`「${food.name}」をマイ食品に登録しました`);
+    setBarcodeForRegister(null); setProductError(null);
+  }
+
+  function pickMyFood(id: string) {
+    const f = myFoods.find((m) => m.id === id);
+    if (!f) return;
+    setName(f.name); setNameError('');
+    applyBasis(basisFromMyFood(f));
+    setShowMyFoods(false);
   }
 
   function handleSave() {
@@ -363,6 +477,15 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
               <p className="text-xs text-gray-400 mt-2 text-center">商品情報を取得中…</p>
             )}
             {productError && <p className="text-xs text-amber-600 mt-2">{productError}</p>}
+            {barcodeForRegister && (
+              <button
+                type="button"
+                onClick={registerMyFood}
+                className="mt-2 w-full py-2 bg-white border border-[#4CAF50] text-[#4CAF50] rounded-lg text-xs font-bold"
+              >
+                ＋ この商品をマイ食品に登録（バーコード {barcodeForRegister} を紐付け）
+              </button>
+            )}
             {productResult && productResult.found && (
               <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-800 flex gap-3 items-center">
                 {productResult.imageUrl && (
@@ -394,6 +517,104 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
             )}
           </div>
 
+          {/* ── 食品検索（成分表） & マイ食品 ── */}
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowFoodSearch((v) => !v); setShowMyFoods(false); }}
+              className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                showFoodSearch ? 'border-[#4CAF50] text-[#4CAF50] bg-green-50' : 'border-gray-200 text-gray-500 hover:border-[#4CAF50] hover:text-[#4CAF50]'
+              }`}
+            >
+              🔍 食品を検索
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowMyFoods((v) => !v); setShowFoodSearch(false); }}
+              className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${
+                showMyFoods ? 'border-[#4CAF50] text-[#4CAF50] bg-green-50' : 'border-gray-200 text-gray-500 hover:border-[#4CAF50] hover:text-[#4CAF50]'
+              }`}
+            >
+              ⭐ マイ食品{myFoods.length > 0 ? `(${myFoods.length})` : ''}
+            </button>
+          </div>
+
+          {showFoodSearch && (
+            <div className="mb-4 bg-gray-50 rounded-xl p-3 space-y-2">
+              <input
+                className="input"
+                value={foodQuery}
+                onChange={(e) => handleFoodQuery(e.target.value)}
+                placeholder="例: 精白米、鶏卵、木綿豆腐、ヨーグルト"
+                autoFocus
+              />
+              <p className="text-[10px] text-gray-400">
+                日本食品標準成分表（八訂）。タップで100gあたりを反映し、下の「分量」で調整できます
+              </p>
+              <ul className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                {foodResults.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => pickFood(item)}
+                      className="w-full text-left py-2 px-1 hover:bg-white rounded flex justify-between gap-2 items-center"
+                    >
+                      <span className="text-xs text-gray-700 truncate">{item.name}</span>
+                      <span className="text-[11px] text-gray-400 shrink-0">{item.kcal}kcal/100g</span>
+                    </button>
+                  </li>
+                ))}
+                {foodQuery.trim() && foodResults.length === 0 && (
+                  <li className="text-xs text-gray-400 py-2">該当する食品が見つかりません</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {showMyFoods && (
+            <div className="mb-4 bg-gray-50 rounded-xl p-3 space-y-2">
+              {myFoods.length === 0 ? (
+                <p className="text-xs text-gray-400">
+                  まだマイ食品がありません。内容を入力して下の「登録」で追加できます。
+                </p>
+              ) : (
+                <ul className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                  {myFoods.map((f) => (
+                    <li key={f.id} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => pickMyFood(f.id)}
+                        className="flex-1 text-left py-2 px-1 hover:bg-white rounded flex justify-between gap-2 items-center"
+                      >
+                        <span className="text-xs text-gray-700 truncate">{f.name}</span>
+                        <span className="text-[11px] text-gray-400 shrink-0">
+                          {f.calories}kcal/{f.basis === '100g' ? '100g' : (f.servingLabel || '1食')}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteMyFood(f.id)}
+                        className="text-gray-300 hover:text-red-400 px-1.5 text-sm shrink-0"
+                        aria-label="削除"
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={registerMyFood}
+                className="w-full py-2 bg-white border border-[#4CAF50] text-[#4CAF50] rounded-lg text-xs font-bold"
+              >
+                ＋ 現在の内容をマイ食品に登録
+              </button>
+            </div>
+          )}
+
+          {savedMsg && <p className="text-xs text-green-600 mb-3">✅ {savedMsg}</p>}
+
           <Field label="食事名" error={nameError}>
             <input
               className={`input ${nameError ? 'border-red-400 focus:border-red-400' : ''}`}
@@ -404,12 +625,35 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
             />
           </Field>
 
+          {/* ── 分量スライダー（栄養ソース反映後に表示） ── */}
+          {basis && (
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-1.5 gap-2">
+                <p className="text-xs font-bold text-blue-800 truncate">⚖️ 分量：{basis.name}</p>
+                <span className="shrink-0 text-[10px] font-bold text-blue-600">{ORIGIN_LABEL[basis.origin]}</span>
+              </div>
+              <input
+                type="range"
+                min={basis.unit === 'serving' ? 0.25 : 10}
+                max={basis.unit === 'serving' ? 4 : 500}
+                step={basis.unit === 'serving' ? 0.25 : 10}
+                value={basis.quantity}
+                onChange={(e) => updateQuantity(parseFloat(e.target.value))}
+                className="w-full accent-blue-600"
+              />
+              <div className="flex items-center justify-between text-[11px] text-blue-700 mt-1">
+                <span>{basis.unit === 'serving' ? `${basis.quantity} ${basis.unitLabel}` : `${basis.quantity} g`}</span>
+                <span className="font-bold">≈ {calories || 0} kcal</span>
+              </div>
+            </div>
+          )}
+
           <Field label="カロリー（kcal）" error={calError}>
             <input
               className={`input ${calError ? 'border-red-400 focus:border-red-400' : ''}`}
               type="number"
               value={calories}
-              onChange={(e) => { setCalories(e.target.value); setCalError(''); }}
+              onChange={(e) => { setCalories(e.target.value); setCalError(''); setBasis(null); }}
               placeholder="例: 380"
               min={0}
             />
@@ -476,7 +720,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
                     className="input text-center px-2"
                     type="number"
                     value={val}
-                    onChange={(e) => set(e.target.value)}
+                    onChange={(e) => { set(e.target.value); setBasis(null); }}
                     placeholder="0"
                     min={0}
                   />
