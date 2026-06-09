@@ -1,7 +1,7 @@
 import { MealAnalysisResult } from './types';
 
 export const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
 
 // estimatedCalories を null にして誤情報（500kcal）を与えない
 export const GEMINI_FALLBACK: MealAnalysisResult = {
