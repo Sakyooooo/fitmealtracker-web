@@ -221,9 +221,10 @@ export async function POST(request: Request) {
 }
 
 // ── Gemini 呼び出し（リトライ＋フォールバック） ───────────────────────────────
-// ユーザー設定: メイン・フォールバックとも gemini-3.1-flash-lite で統一。
+// ユーザー設定: メイン=gemini-3.1-flash-lite（gemini.ts）、
+// フォールバックは別系の gemini-2.5-flash-lite（モデル障害時の退避先）。
 const GEMINI_FALLBACK_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
