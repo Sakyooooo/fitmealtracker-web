@@ -26,7 +26,7 @@ export type NutritionEntry = {
 // マッチは「クエリに含まれるキーワードのうち最長のもの」を採用する。
 const TABLE: NutritionEntry[] = [
   // ── ご飯・丼もの ──
-  { name: '白米ごはん', keywords: ['白米', '白ごはん', '白ご飯', 'ライス', 'ごはん', 'ご飯'], kcal: 252, p: 3.8, f: 0.5, c: 55, serving: '茶碗1杯(150g)' },
+  { name: '白米ごはん', keywords: ['白米', '白ごはん', '白ご飯', 'ごはん', 'ご飯'], kcal: 252, p: 3.8, f: 0.5, c: 55, serving: '茶碗1杯(150g)' },
   { name: '牛丼', keywords: ['牛丼', 'ぎゅうどん'], kcal: 730, p: 22, f: 25, c: 103, serving: '並盛' },
   { name: '親子丼', keywords: ['親子丼'], kcal: 640, p: 30, f: 15, c: 95, serving: '1杯' },
   { name: 'カツ丼', keywords: ['カツ丼', 'かつ丼'], kcal: 870, p: 32, f: 32, c: 110, serving: '1杯' },
@@ -204,8 +204,14 @@ const round1 = (x: number) => Math.round(x * 10) / 10;
 export function applyNutritionDb(
   result: MealAnalysisResult,
   portion?: string | null,
+  opts?: { matchCandidates?: boolean },
 ): MealAnalysisResult {
-  const names = [result.dishName, ...(result.candidates ?? [])].filter(
+  // テキスト推定では候補(candidates)での照合を無効化する。
+  // 例:「タコライス」の候補「ドライカレー」が『カレー』キーワードで
+  // カレーライスに誤マッチするのを防ぎ、入力した料理名のみで判定する。
+  const matchCandidates = opts?.matchCandidates ?? true;
+  const source = matchCandidates ? [result.dishName, ...(result.candidates ?? [])] : [result.dishName];
+  const names = source.filter(
     (n): n is string => typeof n === 'string' && n.trim() !== '',
   );
 

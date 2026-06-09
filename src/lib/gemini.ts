@@ -45,3 +45,18 @@ export async function analyzeWithGemini(file: File): Promise<MealAnalysisResult>
     return GEMINI_FALLBACK;
   }
 }
+
+/** 食事名テキストだけから Gemini にカロリー/PFCを推定させる（写真なし）。 */
+export async function estimateMealByName(name: string): Promise<MealAnalysisResult> {
+  const formData = new FormData();
+  formData.append('name', name);
+
+  try {
+    const res = await fetch('/api/analyze-meal', { method: 'POST', body: formData });
+    if (!res.ok) return GEMINI_FALLBACK;
+    return (await res.json()) as MealAnalysisResult;
+  } catch (e) {
+    console.error('[gemini name]', e);
+    return GEMINI_FALLBACK;
+  }
+}

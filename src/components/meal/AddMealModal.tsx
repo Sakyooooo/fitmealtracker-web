@@ -8,7 +8,7 @@ import {
   FoodCompositionItem, NutritionBasis,
 } from '@/lib/types';
 import { todayString } from '@/lib/stats';
-import { analyzeWithGemini } from '@/lib/gemini';
+import { analyzeWithGemini, estimateMealByName } from '@/lib/gemini';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
 import { searchFoods } from '@/lib/foodComposition';
 import { searchDishes } from '@/lib/nutritionDb';
@@ -94,6 +94,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   // 食事名入力からのサジェスト（料理DB＋マイ食品＋成分表を横断）
   const [nameSuggestions, setNameSuggestions] = useState<NameSuggestion[]>([]);
   const nameQueryRef = useRef('');
+  const [estimatingName, setEstimatingName] = useState(false);
 
   // ── バリデーションエラー ──────────────────────────────────────────────────────
   const [nameError, setNameError] = useState('');
@@ -111,7 +112,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     setProductError(null); setProductLoading(false); setBarcodeForRegister(null);
     setShowFoodSearch(false); setFoodQuery(''); setFoodResults([]);
     setShowMyFoods(false); setBasis(null); setSavedMsg(null);
-    setNameSuggestions([]); nameQueryRef.current = '';
+    setNameSuggestions([]); nameQueryRef.current = ''; setEstimatingName(false);
     setNameError(''); setCalError('');
   }
 
@@ -314,27 +315,66 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     nameQueryRef.current = '';
   }
 
+  // 候補ゼロのとき、料理名テキストだけを Gemini に送ってカロリー/PFCを推定。
+  async function runAiEstimate() {
+    const q = name.trim();
+    if (q.length < 2) return;
+    setEstimatingName(true);
+    setSavedMsg(null);
+    try {
+      const result = await estimateMealByName(q);
+      const b = basisFromAnalysis(result);
+      if (b) {
+        b.name = q; // ユーザーが入力した名前を保持
+        applyBasis(b);
+      } else {
+        setSavedMsg('AIが推定できませんでした。手動で入力してください。');
+      }
+    } finally {
+      setEstimatingName(false);
+    }
+  }
+
   function renderNameSuggestions() {
-    if (nameSuggestions.length === 0) return null;
-    return (
-      <div className="-mt-2 mb-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1">候補（タップでカロリーを反映）</p>
-        <ul className="max-h-44 overflow-y-auto divide-y divide-gray-100">
-          {nameSuggestions.map((s) => (
-            <li key={s.key}>
-              <button
-                type="button"
-                onClick={() => pickSuggestion(s)}
-                className="w-full text-left py-2 px-3 hover:bg-green-50 flex justify-between gap-2 items-center"
-              >
-                <span className="text-xs text-gray-700 truncate">{s.label}</span>
-                <span className="text-[11px] text-gray-400 shrink-0">{s.sub}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
+    const q = name.trim();
+    if (nameSuggestions.length > 0) {
+      return (
+        <div className="-mt-2 mb-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1">候補（タップでカロリーを反映）</p>
+          <ul className="max-h-44 overflow-y-auto divide-y divide-gray-100">
+            {nameSuggestions.map((s) => (
+              <li key={s.key}>
+                <button
+                  type="button"
+                  onClick={() => pickSuggestion(s)}
+                  className="w-full text-left py-2 px-3 hover:bg-green-50 flex justify-between gap-2 items-center"
+                >
+                  <span className="text-xs text-gray-700 truncate">{s.label}</span>
+                  <span className="text-[11px] text-gray-400 shrink-0">{s.sub}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+    // 候補が無いとき: AI推定ボタン（既にこの名前でAI推定済みなら出さない）
+    const alreadyAi = basis?.origin === 'ai' && basis.name === q;
+    if (q.length >= 2 && !alreadyAi) {
+      return (
+        <div className="-mt-2 mb-4">
+          <button
+            type="button"
+            onClick={runAiEstimate}
+            disabled={estimatingName}
+            className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-60"
+          >
+            {estimatingName ? '🤖 AIが推定中…' : `🤖 「${q}」をAIでカロリー推定`}
+          </button>
+        </div>
+      );
+    }
+    return null;
   }
 
   function handleSave() {
