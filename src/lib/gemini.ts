@@ -1,7 +1,7 @@
 import { MealAnalysisResult } from './types';
 
 export const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
 
 // estimatedCalories を null にして誤情報（500kcal）を与えない
 export const GEMINI_FALLBACK: MealAnalysisResult = {
@@ -42,6 +42,21 @@ export async function analyzeWithGemini(file: File): Promise<MealAnalysisResult>
     return (await res.json()) as MealAnalysisResult;
   } catch (e) {
     console.error('[gemini]', e);
+    return GEMINI_FALLBACK;
+  }
+}
+
+/** 食事名テキストだけから Gemini にカロリー/PFCを推定させる（写真なし）。 */
+export async function estimateMealByName(name: string): Promise<MealAnalysisResult> {
+  const formData = new FormData();
+  formData.append('name', name);
+
+  try {
+    const res = await fetch('/api/analyze-meal', { method: 'POST', body: formData });
+    if (!res.ok) return GEMINI_FALLBACK;
+    return (await res.json()) as MealAnalysisResult;
+  } catch (e) {
+    console.error('[gemini name]', e);
     return GEMINI_FALLBACK;
   }
 }

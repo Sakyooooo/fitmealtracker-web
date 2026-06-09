@@ -106,6 +106,16 @@ const RESPONSE_SCHEMA = {
   required: ['dishName', 'candidates', 'estimatedCalories', 'confidence'],
 };
 
+// 食事名テキストだけからカロリー/PFCを推定する場合のプロンプト。
+function buildTextPrompt(dish: string): string {
+  return `あなたは日本の管理栄養士です。「${dish}」という料理または食品について、日本の一般的な一人前を基準に栄養を推定してください。
+- dishName は「${dish}」（必要なら一般的な表記に整える）。
+- candidates に近い料理名を確信度の高い順に最大3つ。
+- estimatedCalories(kcal) と PFC(protein/fat/carbs, g) を推定する。portion は "regular"。
+- 判断できない、または数値に自信が無い場合は該当値を null にする。
+JSONのみで回答してください。`;
+}
+
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
 function normalizeResult(value: Partial<MealAnalysisResult>): MealAnalysisResult {
@@ -159,26 +169,32 @@ export async function POST(request: Request) {
     return NextResponse.json(GEMINI_FALLBACK);
   }
 
-  // 5. Parse & validate image
+  // 5. Parse input（画像 もしくは 食事名テキスト）
   const formData = await request.formData();
   const image = formData.get('image');
+  const nameField = formData.get('name');
 
-  if (!(image instanceof File) || !image.type.startsWith('image/')) {
-    return NextResponse.json({ error: 'image file is required' }, { status: 400 });
-  }
-  if (image.size > MAX_IMAGE_SIZE_BYTES) {
-    return NextResponse.json({ error: 'image is too large' }, { status: 413 });
+  let parts: Array<Record<string, unknown>>;
+  let isTextMode = false;
+  if (image instanceof File && image.type.startsWith('image/')) {
+    if (image.size > MAX_IMAGE_SIZE_BYTES) {
+      return NextResponse.json({ error: 'image is too large' }, { status: 413 });
+    }
+    const base64 = Buffer.from(await image.arrayBuffer()).toString('base64');
+    parts = [
+      { text: PROMPT },
+      { inline_data: { mime_type: image.type, data: base64 } },
+    ];
+  } else if (typeof nameField === 'string' && nameField.trim()) {
+    parts = [{ text: buildTextPrompt(nameField.trim().slice(0, 60)) }];
+    isTextMode = true;
+  } else {
+    return NextResponse.json({ error: 'image file or name is required' }, { status: 400 });
   }
 
   // 6. Call Gemini
-  const base64 = Buffer.from(await image.arrayBuffer()).toString('base64');
   const body = {
-    contents: [{
-      parts: [
-        { text: PROMPT },
-        { inline_data: { mime_type: image.type, data: base64 } },
-      ],
-    }],
+    contents: [{ parts }],
     generationConfig: {
       temperature: 0.2,
       responseMimeType: 'application/json',
@@ -199,11 +215,14 @@ export async function POST(request: Request) {
   const parsed = extractJson(text) as (MealAnalysisResult & { portion?: string | null }) | null;
   const normalized = normalizeResult(parsed ?? {});
   // 料理名は AI、カロリー/PFC は栄養成分表で決定的に算出（ヒット時のみ上書き）。
-  const final = applyNutritionDb(normalized, parsed?.portion);
+  // テキスト推定では候補での誤マッチを避けるため入力名のみで照合する。
+  const final = applyNutritionDb(normalized, parsed?.portion, { matchCandidates: !isTextMode });
   return NextResponse.json(final);
 }
 
 // ── Gemini 呼び出し（リトライ＋フォールバック） ───────────────────────────────
+// ユーザー設定: メイン=gemini-3.1-flash-lite（gemini.ts）、
+// フォールバックは別系の gemini-2.5-flash-lite（モデル障害時の退避先）。
 const GEMINI_FALLBACK_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);

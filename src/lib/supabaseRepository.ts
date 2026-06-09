@@ -4,7 +4,7 @@
  */
 
 import { supabase, supabaseEnabled } from './supabase';
-import { MealEntry, ExerciseEntry, ReactionEmoji, TimelineItem, Reaction } from './types';
+import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction } from './types';
 import { ensureAuthUserId } from './identity';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -109,6 +109,80 @@ export async function sbDeleteExercise(id: string): Promise<void> {
   if (!supabaseEnabled || !supabase) return;
   const { error } = await supabase.from('exercises').delete().eq('id', id);
   if (error) console.error('[supabaseRepository] deleteExercise:', error.message);
+}
+
+// ── My Foods（マイ食品の端末間同期） ─────────────────────────────────────────
+
+// 006_my_foods.sql 未適用の環境ではテーブルが無い。最初の失敗で同期を停止し、
+// ローカル保存のみで動作させる（コンソールのエラー連発を防ぐ）。
+let myFoodsUnavailable = false;
+function noteMyFoodsError(msg: string): void {
+  if (msg.includes('Could not find the table') || msg.includes('my_foods')) {
+    if (!myFoodsUnavailable) {
+      console.warn('[my_foods] テーブル未作成のため同期を無効化します（supabase/migrations/006_my_foods.sql を実行すると有効化）');
+    }
+    myFoodsUnavailable = true;
+  } else {
+    console.error('[supabaseRepository] my_foods:', msg);
+  }
+}
+
+function toSupaMyFood(f: MyFood, userId: string) {
+  return {
+    id:            f.id,
+    user_id:       userId,
+    name:          f.name,
+    barcode:       f.barcode ?? null,
+    basis:         f.basis,
+    serving_label: f.servingLabel ?? null,
+    calories:      f.calories,
+    protein:       f.protein ?? null,
+    fat:           f.fat ?? null,
+    carbs:         f.carbs ?? null,
+    created_at:    f.createdAt,
+    updated_at:    f.updatedAt,
+  };
+}
+
+function fromSupaMyFood(r: Record<string, unknown>): MyFood {
+  return {
+    id:           r.id as string,
+    name:         r.name as string,
+    barcode:      (r.barcode as string | null) ?? null,
+    basis:        (r.basis as MyFood['basis']) ?? 'serving',
+    servingLabel: (r.serving_label as string | null) ?? null,
+    calories:     Number(r.calories),
+    protein:      r.protein == null ? null : Number(r.protein),
+    fat:          r.fat == null ? null : Number(r.fat),
+    carbs:        r.carbs == null ? null : Number(r.carbs),
+    createdAt:    (r.created_at as string) ?? new Date().toISOString(),
+    updatedAt:    (r.updated_at as string) ?? new Date().toISOString(),
+  };
+}
+
+export async function sbUpsertMyFood(food: MyFood): Promise<void> {
+  if (!supabaseEnabled || !supabase || myFoodsUnavailable) return;
+  const userId = await ensureAuthUserId();
+  const { error } = await supabase.from('my_foods').upsert(toSupaMyFood(food, userId));
+  if (error) noteMyFoodsError(error.message);
+}
+
+export async function sbDeleteMyFood(id: string): Promise<void> {
+  if (!supabaseEnabled || !supabase || myFoodsUnavailable) return;
+  const { error } = await supabase.from('my_foods').delete().eq('id', id);
+  if (error) noteMyFoodsError(error.message);
+}
+
+export async function sbFetchMyFoods(): Promise<MyFood[] | null> {
+  if (!supabaseEnabled || !supabase || myFoodsUnavailable) return null;
+  const userId = await ensureAuthUserId();
+  const { data, error } = await supabase
+    .from('my_foods')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  if (error) { noteMyFoodsError(error.message); return null; }
+  return (data ?? []).map((r) => fromSupaMyFood(r as Record<string, unknown>));
 }
 
 // ── Migration: localStorage → Supabase ───────────────────────────────────────

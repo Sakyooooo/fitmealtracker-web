@@ -81,6 +81,43 @@ export type ProductLookupResult = {
   source: 'off';
 };
 
+/** 日本食品標準成分表（八訂）の1食品。値は可食部100gあたり。 */
+export type FoodCompositionItem = {
+  id: string;          // 食品番号（5桁）
+  name: string;        // 食品名
+  category: string;    // 食品群（例: 穀類）
+  kcal: number;        // エネルギー kcal/100g
+  p: number | null;    // たんぱく質 g/100g
+  f: number | null;    // 脂質 g/100g
+  c: number | null;    // 炭水化物 g/100g
+  searchKey: string;   // 検索用に正規化した名前
+};
+
+/** ユーザーが自前登録した食品（マイ食品）。market品をバーコード紐付け可。 */
+export type MyFood = {
+  id: string;
+  name: string;
+  barcode?: string | null;        // 市販品のバーコード（任意）
+  basis: 'serving' | '100g';      // calories/PFC の基準
+  servingLabel?: string | null;   // 例: "1個" / "100gあたり"
+  calories: number;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** 分量スライダーが駆動する栄養の基準量。表示値 = base × (unit==='100g' ? quantity/100 : quantity)。 */
+export type NutritionBasis = {
+  name: string;
+  base: { kcal: number; p: number | null; f: number | null; c: number | null };
+  unit: 'serving' | '100g';
+  unitLabel: string;   // serving時の単位（"人前"/"個"/"杯"等）。100g時は使わない
+  quantity: number;    // serving数 もしくは グラム数
+  origin: 'ai' | 'db' | 'off' | 'composition' | 'myfood';
+};
+
 export type DayStat = {
   date: string;
   dayLabel: string;
