@@ -76,6 +76,11 @@ export async function fetchMeals(): Promise<MealEntry[]> {
   return withPhotoUrls(load<MealEntry[]>(KEYS.meals, []));
 }
 
+/** バックアップ用: object URL を生成せず保存形のまま返す */
+export function fetchMealsRaw(): MealEntry[] {
+  return load<MealEntry[]>(KEYS.meals, []);
+}
+
 export async function insertMeal(entry: NewMealEntry): Promise<MealEntry> {
   const photoId = entry.photoFile ? await saveImage(entry.photoFile) : undefined;
   const mealData = { ...entry };
@@ -178,6 +183,20 @@ export async function bulkImportExercises(entries: ExerciseEntry[]): Promise<voi
   const existingIds = new Set(existing.map((e) => e.id));
   const toAdd = entries.filter((e) => !existingIds.has(e.id));
   save(KEYS.exercises, [...toAdd, ...existing]);
+}
+
+export async function bulkImportWeights(entries: WeightEntry[]): Promise<void> {
+  const existing = load<WeightEntry[]>(KEYS.weights, []);
+  const existingIds = new Set(existing.map((w) => w.id));
+  const toAdd = entries.filter((w) => !existingIds.has(w.id));
+  save(KEYS.weights, [...toAdd, ...existing]);
+}
+
+export function bulkImportMyFoods(foods: MyFood[]): void {
+  const existing = fetchMyFoodsLocal();
+  const existingIds = new Set(existing.map((f) => f.id));
+  const toAdd = foods.filter((f) => !existingIds.has(f.id));
+  save(KEYS.myFoods, [...toAdd, ...existing]);
 }
 
 export function loadSettings(): AppSettings {

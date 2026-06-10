@@ -75,3 +75,19 @@ export async function getImageObjectUrl(id: string): Promise<string | null> {
 export async function deleteImage(id: string): Promise<void> {
   await transaction('readwrite', (store) => store.delete(id));
 }
+
+// ── バックアップ用（ID を保持したまま取り出し / 復元する） ─────────────────────
+export type StoredImageRecord = StoredImage;
+
+export async function getStoredImage(id: string): Promise<StoredImageRecord | null> {
+  const image = await transaction<StoredImage | undefined>(
+    'readonly',
+    (store) => store.get(id),
+  );
+  return image ?? null;
+}
+
+/** 復元用: 既存の id をそのまま使って保存する（meals の photoId 参照を維持） */
+export async function importImage(image: StoredImageRecord): Promise<void> {
+  await transaction('readwrite', (store) => store.put(image));
+}
