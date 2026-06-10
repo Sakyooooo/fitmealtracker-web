@@ -11,6 +11,8 @@ type Props = {
   color: string;
   avatarUrl?: string;
   items: TimelineItem[];
+  /** フレンド削除（実在のフレンドのみ。自分・デモには渡さない） */
+  onRemove?: () => void;
 };
 
 function timeAgo(iso: string): string {
@@ -43,7 +45,7 @@ function Thumb({ item }: { item: TimelineItem }) {
   );
 }
 
-export default function PersonRecordsModal({ open, onClose, name, isMe, color, avatarUrl, items }: Props) {
+export default function PersonRecordsModal({ open, onClose, name, isMe, color, avatarUrl, items, onRemove }: Props) {
   const displayName = isMe ? 'You' : name;
   const mealCount = items.filter((i) => i.type === 'meal').length;
   const exCount = items.filter((i) => i.type === 'exercise').length;
@@ -118,6 +120,21 @@ export default function PersonRecordsModal({ open, onClose, name, isMe, color, a
             );
           })}
         </div>
+      )}
+
+      {/* フレンド削除（実在のフレンドのみ表示） */}
+      {!isMe && onRemove && (
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm(`${name} をフレンドから削除しますか？\nお互いのタイムラインと地球儀から表示されなくなります。`)) {
+              onRemove();
+            }
+          }}
+          className="w-full mt-5 py-3 border border-red-100 text-red-500 text-sm font-bold rounded-xl hover:bg-red-50 transition-colors"
+        >
+          フレンドを削除
+        </button>
       )}
     </Modal>
   );

@@ -77,7 +77,7 @@ export default function FriendsPage() {
     userId, friendCode, displayName,
     friends,
     error,
-    addFriend, updateNickname, clearError,
+    addFriend, removeFriend, updateNickname, clearError,
   } = useFriends();
 
   const { items: timeline, loading: tlLoading, load: loadTimeline, react } = useTimeline();
@@ -213,6 +213,26 @@ export default function FriendsPage() {
     () => (modalUser ? mergedTimeline.filter((it) => it.user_id === modalUser.id) : []),
     [modalUser, mergedTimeline],
   );
+
+  // フレンドのユーザーID → friendship ID（削除に必要。実在フレンドのみ）
+  const friendshipIdByUser = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const f of friends) map.set(f.friend.id, f.id);
+    return map;
+  }, [friends]);
+
+  const modalFriendshipId = modalUser && !modalUser.isMe
+    ? friendshipIdByUser.get(modalUser.id)
+    : undefined;
+
+  // モーダルからフレンド削除 → 閉じて、絞り込み中なら解除
+  const handleRemoveFriend = useCallback(async () => {
+    if (!modalFriendshipId) return;
+    const removedId = modalUser?.id;
+    setModalUser(null);
+    await removeFriend(modalFriendshipId);
+    if (removedId && selectedUserId === removedId) setSelectedUserId(null);
+  }, [modalFriendshipId, modalUser, removeFriend, selectedUserId]);
 
   function toggleSelect(id: string) {
     setSelectedUserId((prev) => (prev === id ? null : id));
@@ -451,6 +471,7 @@ export default function FriendsPage() {
         color={ACCENT}
         avatarUrl={modalUser?.avatarUrl}
         items={modalItems}
+        onRemove={modalFriendshipId ? handleRemoveFriend : undefined}
       />
     </div>
   );
