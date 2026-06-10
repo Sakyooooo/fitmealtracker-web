@@ -1,6 +1,7 @@
 import Navigation from './Navigation';
 import OnboardingModal from '@/components/onboarding/OnboardingModal';
 import MigrationBanner from '@/components/migration/MigrationBanner';
+import StoragePersistence from './StoragePersistence';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -11,6 +12,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       <Navigation />
       <OnboardingModal />
       <MigrationBanner />
+      <StoragePersistence />
     </>
   );
 }

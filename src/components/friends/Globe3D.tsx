@@ -4,15 +4,26 @@ import { Suspense, useRef, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { GlobeUser } from './FriendsGlobe';
 
 const EARTH_URL = '/models/earth_textured.glb';
-const STATUES_URL = '/models/statues.glb';
+const AVATAR_URL = '/models/Avatar.glb';
+
+// 各フレンドがランダムに行う筋トレクリップ（Avatar.glb に内蔵）
+const WORKOUT_CLIPS = ['Squat', 'BenchPress', 'PullUp'] as const;
+// クリップごとに表示する器材ノード（それ以外は隠す）
+const CLIP_EQUIPMENT: Record<string, string[]> = {
+  BenchPress: ['Bench', 'Barbell'],
+  Squat: ['Barbell'],
+  PullUp: ['PullUpBar'],
+};
+const EQUIPMENT_NODES = ['Bench', 'Barbell', 'PullUpBar'];
 
 const ME_COLOR = '#AB47BC';
 const FRIEND_COLORS = ['#4F9BE8', '#F6A6C1', '#7BC96F', '#F6C453', '#9B8CFA'];
 const RADIUS = 2;
-const STATUE_SCALE = 0.46;
+const AVATAR_SCALE = 0.42;
 
 // フレンド配置（重ならないよう各大陸へ分散。me は [10,30] 固定）
 const SPOTS: [number, number][] = [
@@ -73,28 +84,41 @@ function EarthModel() {
   );
 }
 
-// 像ピン — ランダムに選ばれたフィギュアを地球表面に立てる（ユーザー色で着色）
-function StatuePin({
-  lon, lat, figure, color, onTap,
+// アバターピン — 地球表面に立つアバターが筋トレクリップを再生（ユーザーごとに種目固定）
+function AvatarPin({
+  lon, lat, gltf, clipName, onTap,
 }: {
-  lon: number; lat: number; figure: THREE.Object3D; color: string;
+  lon: number; lat: number;
+  gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] };
+  clipName: string;
   onTap?: () => void;
 }) {
+  // スキン付きメッシュは SkeletonUtils.clone で複製（plain clone はスケルトンを壊す）
   const scene = useMemo(() => {
-    const clone = figure.clone(true);
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(color),
-      roughness: 0.65,
-      metalness: 0.0,
-      flatShading: true,
-    });
-    clone.traverse((o) => {
+    const c = cloneSkinned(gltf.scene) as THREE.Group;
+    const visible = CLIP_EQUIPMENT[clipName] ?? [];
+    c.traverse((o) => {
       o.frustumCulled = false; // どの角度でも消えないように
-      const mesh = o as THREE.Mesh;
-      if (mesh.isMesh) mesh.material = mat;
+      if (EQUIPMENT_NODES.includes(o.name)) o.visible = visible.includes(o.name);
     });
-    return clone;
-  }, [figure, color]);
+    return c;
+  }, [gltf, clipName]);
+
+  // インスタンスごとに独立した AnimationMixer（各自バラバラに動く）
+  useEffect(() => {
+    const mixer = new THREE.AnimationMixer(scene);
+    const clip = gltf.animations.find((a) => a.name === clipName);
+    if (clip) {
+      const action = mixer.clipAction(clip);
+      action.time = Math.random() * clip.duration; // 位相をずらす
+      action.play();
+    }
+    mixerRef.current = mixer;
+    return () => { mixer.stopAllAction(); mixer.uncacheRoot(scene); };
+  }, [scene, gltf, clipName]);
+
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  useFrame((_, delta) => { mixerRef.current?.update(delta); });
 
   const pos = useMemo(() => lonLatToVec3(lon, lat, RADIUS), [lon, lat]);
   const quat = useMemo(() => {
@@ -109,7 +133,7 @@ function StatuePin({
     <group
       position={pos}
       quaternion={quat}
-      scale={STATUE_SCALE}
+      scale={AVATAR_SCALE}
       onClick={(e) => { e.stopPropagation(); onTap?.(); }}
       onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
       onPointerOut={() => { document.body.style.cursor = ''; }}
@@ -121,16 +145,21 @@ function StatuePin({
 
 // フレンドカード（HTML オーバーレイ）
 function FriendCard({
-  user, lon, lat, color, occludeRef, figure, onSelectUser, didDragRef,
+  user, lon, lat, color, occludeRef, gltf, clipName, onSelectUser, didDragRef,
 }: {
   user: GlobeUser; lon: number; lat: number; color: string;
   occludeRef: React.RefObject<THREE.Mesh | null>;
-  figure: THREE.Object3D;
+  gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] };
+  clipName: string;
   onSelectUser?: (user: GlobeUser) => void;
   didDragRef: React.RefObject<boolean>;
 }) {
   const normal = useMemo(() => lonLatToVec3(lon, lat, 1), [lon, lat]);
-  const cardPos = useMemo(() => normal.clone().multiplyScalar(RADIUS + 0.5), [normal]);
+  // カードはアバター（＋器材）の頭上に浮かせる。懸垂は鉄棒が高いので余分に上げる
+  const cardPos = useMemo(() => {
+    const lift = clipName === 'PullUp' ? 1.35 : 1.0;
+    return normal.clone().multiplyScalar(RADIUS + lift);
+  }, [normal, clipName]);
   const initial = user.name.charAt(0).toUpperCase();
 
   const handleTap = () => {
@@ -140,7 +169,7 @@ function FriendCard({
 
   return (
     <>
-      <StatuePin lon={lon} lat={lat} figure={figure} color={color} onTap={handleTap} />
+      <AvatarPin lon={lon} lat={lat} gltf={gltf} clipName={clipName} onTap={handleTap} />
       <Html
         position={cardPos}
         center
@@ -183,20 +212,14 @@ function FriendCard({
   );
 }
 
-// 像ライブラリをロードし、各ユーザーへランダムな像を割り当てる
+// Avatar.glb をロードし、各ユーザーへランダムな筋トレ種目を割り当てる
 function AllFriends({ users, occludeRef, onSelectUser, didDragRef }: {
   users: GlobeUser[];
   occludeRef: React.RefObject<THREE.Mesh | null>;
   onSelectUser?: (user: GlobeUser) => void;
   didDragRef: React.RefObject<boolean>;
 }) {
-  const gltf = useGLTF(STATUES_URL);
-
-  // statues.glb の各フィギュアノード（Statue_00..）を取り出す
-  const figures = useMemo(() => {
-    const root = gltf.scene.getObjectByName('Statues') ?? gltf.scene;
-    return root.children.filter((c) => c.name.startsWith('Statue_'));
-  }, [gltf]);
+  const gltf = useGLTF(AVATAR_URL);
 
   let friendIdx = 0;
 
@@ -205,10 +228,8 @@ function AllFriends({ users, occludeRef, onSelectUser, didDragRef }: {
       {users.map((u, i) => {
         const [lon, lat] = u.isMe ? [10, 30] : SPOTS[friendIdx++ % SPOTS.length];
         const color = u.isMe ? ME_COLOR : FRIEND_COLORS[i % FRIEND_COLORS.length];
-        const figure = figures.length
-          ? figures[hashId(u.id) % figures.length]
-          : null;
-        if (!figure) return null;
+        // ユーザーIDから安定的に種目を割り当て（毎回同じ種目になる）
+        const clipName = WORKOUT_CLIPS[hashId(u.id) % WORKOUT_CLIPS.length];
         return (
           <FriendCard
             key={u.id}
@@ -217,7 +238,8 @@ function AllFriends({ users, occludeRef, onSelectUser, didDragRef }: {
             lat={lat}
             color={color}
             occludeRef={occludeRef}
-            figure={figure}
+            gltf={gltf}
+            clipName={clipName}
             onSelectUser={onSelectUser}
             didDragRef={didDragRef}
           />
@@ -340,4 +362,4 @@ export default function Globe3D({ users, onSelectUser }: {
 }
 
 useGLTF.preload(EARTH_URL);
-useGLTF.preload(STATUES_URL);
+useGLTF.preload(AVATAR_URL);

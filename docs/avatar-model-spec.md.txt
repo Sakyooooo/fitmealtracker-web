@@ -1,0 +1,144 @@
+# Reference Image
+
+Source Of Truth
+
+docs/reference/fitness-avatar-turnaround.png
+
+This image is the highest priority specification.
+
+All modeling decisions must follow this image.
+
+Image priority is higher than text.
+
+Target similarity:
+
+90%+
+
+Do not redesign the character.
+
+Do not change:
+
+* silhouette
+* proportions
+* shoulder width
+* waist width
+* leg thickness
+* muscle volume
+* head shape
+
+Use this image as the modeling reference for all future work.
+
+# Avatar Model Specification
+
+## Style
+
+70% Apple Fitness
+
+30% Anatomy Mannequin
+
+---
+
+## Character Rules
+
+Required
+
+* Gender Neutral
+* Face-less
+* Low Poly
+* Athletic
+* Clean Silhouette
+
+Forbidden
+
+* Bodybuilder
+* Facial Features
+* Hair
+* Realistic Skin
+* Veins
+* Muscle Fibers
+
+---
+
+## Dimensions
+
+Height
+
+180cm
+
+---
+
+## Silhouette
+
+Wide Shoulders
+
+Narrow Waist
+
+V-Taper
+
+Athletic Legs
+
+---
+
+## Polygon Budget
+
+Avatar
+
+6000 Triangles Maximum
+
+---
+
+Equipment
+
+1000 Triangles Maximum
+
+---
+
+## Materials
+
+Matcap
+
+Flat Shading
+
+Vertex Colors
+
+No Textures
+
+---
+
+## Colors
+
+Body
+
+#ECECEC
+
+Shadow
+
+#BDBDBD
+
+Accent
+
+#00C2FF
+
+Exercise Highlight
+
+#3DDC97
+
+---
+
+## Required Files
+
+/blender/Avatar.blend
+
+/public/models/Avatar.glb
+
+---
+
+## Quality Check
+
+Must visually match the turnaround image.
+
+Should remain recognizable from long distance.
+
+Should work in profile view.
+
+Should work in globe view.

@@ -1,0 +1,455 @@
+# Avatar Animation Specification
+
+## Animation Philosophy
+
+Priority Order
+
+1. Readability
+2. Appeal
+3. Silhouette
+4. Performance
+5. Realism
+
+The user must understand the exercise within 0.5 seconds.
+
+Favor clarity over realism.
+
+---
+
+# Idle
+
+Purpose
+
+Health
+
+Premium Feel
+
+Life
+
+---
+
+Length
+
+180 Frames
+
+FPS
+
+30
+
+Duration
+
+6 Seconds
+
+Loop
+
+True
+
+---
+
+Keyframes
+
+Frame 1
+
+Neutral
+
+---
+
+Frame 45
+
+Inhale
+
+Expand Chest
+
+---
+
+Frame 90
+
+Weight Shift Left
+
+---
+
+Frame 135
+
+Exhale
+
+Return Chest
+
+---
+
+Frame 180
+
+Neutral
+
+---
+
+Allowed Motion
+
+Breathing
+
+Weight Shift
+
+Minor Shoulder Motion
+
+---
+
+Forbidden
+
+Fidgeting
+
+Overacting
+
+Excessive Head Motion
+
+---
+
+# Walk
+
+Purpose
+
+Healthy
+
+Active
+
+Positive
+
+---
+
+Length
+
+30 Frames
+
+FPS
+
+30
+
+Duration
+
+1 Second
+
+Loop
+
+True
+
+---
+
+Keyframes
+
+Frame 1
+
+Left Contact
+
+---
+
+Frame 8
+
+Left Down
+
+---
+
+Frame 15
+
+Passing
+
+---
+
+Frame 22
+
+Right Down
+
+---
+
+Frame 30
+
+Right Contact
+
+---
+
+Requirements
+
+Good Posture
+
+Athletic
+
+Apple Fitness Style
+
+---
+
+Forbidden
+
+Cat Back
+
+Model Walk
+
+Military Walk
+
+Tired Walk
+
+---
+
+# Run
+
+Purpose
+
+Represent Active Users
+
+---
+
+Length
+
+20 Frames
+
+FPS
+
+30
+
+Duration
+
+0.66 Seconds
+
+Loop
+
+True
+
+---
+
+Keyframes
+
+Contact
+
+Down
+
+Passing
+
+Flight
+
+Contact
+
+---
+
+Requirements
+
+Light
+
+Energetic
+
+Positive
+
+---
+
+# BenchPress
+
+Purpose
+
+Recognizable within 0.5 Seconds
+
+---
+
+Length
+
+60 Frames
+
+FPS
+
+30
+
+Duration
+
+2 Seconds
+
+Loop
+
+True
+
+---
+
+Keyframes
+
+Frame 1
+
+Start
+
+---
+
+Frame 15
+
+Lowering
+
+---
+
+Frame 30
+
+Bottom
+
+---
+
+Frame 45
+
+Press
+
+---
+
+Frame 60
+
+Lockout
+
+---
+
+Requirements
+
+Open Chest
+
+Open Shoulders
+
+Exaggerated Bar Travel
+
+Readable Silhouette
+
+---
+
+# Squat
+
+Purpose
+
+Recognizable within 0.5 Seconds
+
+---
+
+Length
+
+60 Frames
+
+FPS
+
+30
+
+Duration
+
+2 Seconds
+
+Loop
+
+True
+
+---
+
+Keyframes
+
+Frame 1
+
+Start
+
+---
+
+Frame 15
+
+Descent
+
+---
+
+Frame 30
+
+Bottom
+
+---
+
+Frame 45
+
+Ascent
+
+---
+
+Frame 60
+
+Lockout
+
+---
+
+Requirements
+
+Exaggerated Hip Motion
+
+Stable Bar
+
+Proud Chest
+
+---
+
+# PullUp
+
+Purpose
+
+Recognizable within 0.5 Seconds
+
+---
+
+Length
+
+60 Frames
+
+FPS
+
+30
+
+Duration
+
+2 Seconds
+
+Loop
+
+True
+
+---
+
+Keyframes
+
+Frame 1
+
+Hang
+
+---
+
+Frame 15
+
+Pull
+
+---
+
+Frame 30
+
+Top
+
+---
+
+Frame 45
+
+Lower
+
+---
+
+Frame 60
+
+Hang
+
+---
+
+Requirements
+
+Large Vertical Motion
+
+Chest Approaches Bar
+
+Strong Silhouette
+
+---
+
+# Future Animations
+
+Cycling
+
+PushUp
+
+Stretch
+
+ShoulderPress
+
+Implemented after MVP completion.

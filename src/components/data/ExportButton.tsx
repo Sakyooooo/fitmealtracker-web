@@ -1,13 +1,22 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { MealEntry, ExerciseEntry } from '@/lib/types';
+import { useEffect, useRef, useState } from 'react';
+import { MealEntry, ExerciseEntry, WeightEntry } from '@/lib/types';
 import { bulkImportMeals, bulkImportExercises } from '@/lib/localRepository';
+import {
+  BackupStatus,
+  createFullBackup,
+  getBackupStatus,
+  isFullBackup,
+  markBackupDone,
+  restoreFullBackup,
+} from '@/lib/backup';
 import Modal from '@/components/ui/Modal';
 
 type Props = {
   meals: MealEntry[];
   exercises: ExerciseEntry[];
+  weights?: WeightEntry[];
 };
 
 type Period = '7' | '30' | 'all';
@@ -41,11 +50,39 @@ function cutoffDate(period: Period): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-export default function ExportButton({ meals, exercises }: Props) {
+function lastBackupLabel(status: BackupStatus): string {
+  if (!status.lastBackupAt) return 'まだバックアップがありません';
+  if (status.daysSince === 0) return '前回のバックアップ: 今日';
+  return `前回のバックアップ: ${status.daysSince}日前`;
+}
+
+export default function ExportButton({ meals, exercises, weights = [] }: Props) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [format, setFormat] = useState<Format>('csv');
   const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+
+  const totalRecords = meals.length + exercises.length + weights.length;
+
+  // localStorage を読むためマウント後に判定（SSR 不整合を避ける）
+  useEffect(() => {
+    setBackupStatus(getBackupStatus(totalRecords));
+  }, [totalRecords]);
+
+  async function handleFullBackup() {
+    setBackingUp(true);
+    try {
+      const backup = await createFullBackup();
+      const today = new Date().toISOString().slice(0, 10);
+      downloadJson(backup, `fitmealtracker_backup_${today}.json`);
+      markBackupDone(totalRecords);
+      setBackupStatus(getBackupStatus(totalRecords));
+    } finally {
+      setBackingUp(false);
+    }
+  }
 
   function handleExport(period: Period) {
     setShowExportModal(false);
@@ -99,6 +136,22 @@ export default function ExportButton({ meals, exercises }: Props) {
         alert('不正なデータ形式です。');
         return;
       }
+
+      // 完全バックアップ形式（記録・設定・マイ食品・写真をすべて復元）
+      if (isFullBackup(data)) {
+        const counts = [
+          `食事 ${data.meals.length}件`,
+          `運動 ${data.exercises?.length ?? 0}件`,
+          `体重 ${data.weights?.length ?? 0}件`,
+          `写真 ${data.photos?.length ?? 0}枚`,
+        ].join('・');
+        if (!confirm(`完全バックアップを復元します（${counts}、重複は自動スキップ）。よろしいですか？`)) return;
+        const summary = await restoreFullBackup(data);
+        alert(`復元が完了しました（写真 ${summary.photos}枚を含む）。ページを再読み込みします。`);
+        window.location.reload();
+        return;
+      }
+
       const mealCount = Array.isArray(data.meals) ? data.meals.length : 0;
       const exerciseCount = Array.isArray(data.exercises) ? data.exercises.length : 0;
       if (mealCount === 0 && exerciseCount === 0) {
@@ -125,6 +178,28 @@ export default function ExportButton({ meals, exercises }: Props) {
     <div className="bg-white rounded-2xl shadow-sm p-4 mb-4">
       <h2 className="text-sm font-bold text-gray-700 mb-3">データ管理</h2>
 
+      {/* 完全バックアップ（記録・設定・マイ食品・写真を1ファイルに） */}
+      <button
+        type="button"
+        onClick={handleFullBackup}
+        disabled={backingUp}
+        className={`w-full py-3 mb-1.5 text-sm font-bold rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 ${
+          backupStatus?.due
+            ? 'bg-amber-500 text-white hover:bg-amber-600'
+            : 'bg-emerald-600 text-white hover:bg-emerald-700'
+        }`}
+      >
+        <span>💾</span> {backingUp ? 'バックアップ作成中...' : '完全バックアップ（写真込み）'}
+      </button>
+      {backupStatus && (
+        <p className={`text-xs mb-3 text-center font-semibold ${
+          backupStatus.due ? 'text-amber-600' : 'text-gray-400'
+        }`}>
+          {backupStatus.due ? '⚠️ バックアップをおすすめします — ' : ''}
+          {lastBackupLabel(backupStatus)}
+        </p>
+      )}
+
       <div className="flex gap-2">
         <button
           type="button"
@@ -143,7 +218,7 @@ export default function ExportButton({ meals, exercises }: Props) {
         </button>
       </div>
       <p className="text-xs text-gray-400 mt-2 text-center">
-        エクスポート: CSV または JSON形式 / インポート: JSONのみ
+        エクスポート: CSV/JSON（記録のみ） / インポート: JSON・完全バックアップ
       </p>
 
       <input

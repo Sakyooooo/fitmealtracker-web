@@ -170,7 +170,7 @@ function DataPageInner() {
             targetProtein={targetProtein} targetFat={targetFat} targetCarbs={targetCarbs}
             hasTodayPfc={hasTodayPfc} onEdit={openPfcModal}
           />
-          <ExportButton meals={meals} exercises={exercises} />
+          <ExportButton meals={meals} exercises={exercises} weights={weights} />
 
           <Modal open={showPfcModal} onClose={() => setShowPfcModal(false)} title="1日のPFC目標を設定">
             <div className="space-y-4">
