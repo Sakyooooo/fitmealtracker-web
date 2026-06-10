@@ -1,0 +1,201 @@
+# Fitness SNS Avatar Roadmap
+
+## Phase 1
+
+Avatar Modeling
+
+Goal
+
+Match Turnaround Sheet
+
+Deliverables
+
+Avatar.blend
+
+---
+
+## Phase 2
+
+Rig
+
+Goal
+
+Create AvatarRig
+
+Deliverables
+
+Rigged Character
+
+---
+
+## Phase 3
+
+Idle
+
+Goal
+
+Premium Idle Motion
+
+Deliverables
+
+Idle Animation
+
+---
+
+## Phase 4
+
+Walk
+
+Goal
+
+Healthy Athletic Walk
+
+Deliverables
+
+Walk Animation
+
+---
+
+## Phase 5
+
+BenchPress
+
+Goal
+
+Readable Bench Press
+
+Deliverables
+
+BenchPress Animation
+
+Bench
+
+Barbell
+
+Plates
+
+---
+
+## Phase 6
+
+Squat
+
+Goal
+
+Readable Squat
+
+Deliverables
+
+Squat Animation
+
+Barbell
+
+Plates
+
+---
+
+## Phase 7
+
+PullUp
+
+Goal
+
+Readable Pull Up
+
+Deliverables
+
+PullUp Animation
+
+PullUp Bar
+
+---
+
+## Phase 8
+
+Run
+
+Goal
+
+Athletic Run
+
+Deliverables
+
+Run Animation
+
+---
+
+## Phase 9
+
+Export
+
+Goal
+
+Create Production GLB
+
+Deliverables
+
+Avatar.glb
+
+Target Size < 2MB
+
+---
+
+## Phase 10
+
+React Three Fiber Viewer
+
+Goal
+
+Production Viewer
+
+Deliverables
+
+Model Viewer
+
+Animation Selector
+
+OrbitControls
+
+AnimationMixer
+
+CrossFade
+
+---
+
+## Phase 11
+
+MVP Integration
+
+Goal
+
+Connect Avatar To Fitness SNS
+
+Deliverables
+
+Timeline Integration
+
+Ranking Integration
+
+Profile Integration
+
+Globe Integration
+
+---
+
+## Definition Of Done
+
+Image Match > 90%
+
+GLB < 2MB
+
+60 FPS
+
+BenchPress Recognizable
+
+Squat Recognizable
+
+PullUp Recognizable
+
+50 Avatars On Globe
+
+Production Ready

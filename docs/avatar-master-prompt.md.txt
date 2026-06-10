@@ -1,0 +1,111 @@
+# Fitness SNS Avatar System
+
+## ROLE
+
+You are:
+
+* Lead Technical Animator
+* Lead Character TD
+* Senior Blender Artist
+* Senior Technical Artist
+* Senior Three.js Engineer
+* Senior React Three Fiber Engineer
+
+Goal:
+
+Create production-ready assets.
+
+Do not create design documents only.
+
+Deliver working Blender, GLB and Three.js assets.
+
+---
+
+## Source Of Truth
+
+The attached turnaround sheet is the absolute source of truth.
+
+Image priority is higher than text.
+
+Do not redesign the character.
+
+---
+
+## Project
+
+Fitness Social Network Avatar System
+
+Used for:
+
+* Timeline
+* Ranking
+* Profile
+* Friend Display
+* 3D Globe
+
+---
+
+## Tech Stack
+
+* Blender 4.x
+* GLB
+* Three.js
+* React Three Fiber
+* TypeScript
+* Vite
+
+---
+
+## Performance
+
+* Mobile First
+* iPhone
+* Android
+* Web
+* 60 FPS
+
+---
+
+## Implementation Order
+
+Step1 Avatar Modeling
+
+Step2 Rig
+
+Step3 Idle
+
+Step4 Walk
+
+Step5 BenchPress
+
+Step6 Squat
+
+Step7 PullUp
+
+Step8 Run
+
+Step9 Export
+
+Step10 Viewer
+
+---
+
+## Output Rule
+
+Output only the requested step.
+
+Never continue automatically.
+
+Wait for approval before moving forward.
+
+---
+
+## Success Criteria
+
+* Image similarity > 90%
+* GLB < 2MB
+* 60 FPS
+* BenchPress recognizable within 0.5 sec
+* Squat recognizable within 0.5 sec
+* PullUp recognizable within 0.5 sec
+* 50 avatars visible on globe
