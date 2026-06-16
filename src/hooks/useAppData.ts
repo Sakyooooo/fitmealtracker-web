@@ -18,10 +18,24 @@ import {
   insertGymSession,
   updateGymSession,
   deleteGymSession,
+  bulkImportWeights,
   loadSettings,
   saveSettings,
 } from '@/lib/localRepository';
+import {
+  sbUpsertMeal, sbDeleteMeal, sbUploadMealPhoto,
+  sbUpsertExercise, sbDeleteExercise,
+  sbUpsertWeight, sbDeleteWeight, sbFetchMyWeights,
+  sbUpsertGymSession, sbDeleteGymSession,
+} from '@/lib/supabaseRepository';
 import { todayString } from '@/lib/stats';
+
+/** id をキーに union（端末間で増えた体重をマージ）。日付の新しい順に並べる。 */
+function mergeWeights(local: WeightEntry[], remote: WeightEntry[]): WeightEntry[] {
+  const map = new Map<string, WeightEntry>();
+  for (const w of [...local, ...remote]) map.set(w.id, w);
+  return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+}
 
 type NewMealData = Omit<MealEntry, 'id' | 'date' | 'photoUri' | 'photoId'> & {
   date?: string;
@@ -64,6 +78,18 @@ export function useAppData() {
     setGymSession(gs);
     setSettings(loadSettings());
     setHydrated(true);
+
+    // Supabase から本人の体重を取得してマージ（別端末・再インストール後の復元）
+    (async () => {
+      const remoteW = await sbFetchMyWeights();
+      if (remoteW && remoteW.length > 0) {
+        const merged = mergeWeights(w, remoteW);
+        if (merged.length !== w.length) {
+          await bulkImportWeights(remoteW); // ローカルに無い分だけ追記
+          setWeights(merged);
+        }
+      }
+    })().catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -77,6 +103,14 @@ export function useAppData() {
       const saved = await insertMeal({ ...data, date: data.date ?? todayString() });
       if (saved.photoUri) photoUrlsRef.current.push(saved.photoUri);
       setMeals((prev) => [saved, ...prev]);
+      // Supabase に非同期で同期（写真があれば Storage にアップロードして photo_url を付与）
+      (async () => {
+        let photoUrl: string | undefined;
+        if (data.photoFile) {
+          photoUrl = (await sbUploadMealPhoto(saved.id, data.photoFile)) ?? undefined;
+        }
+        await sbUpsertMeal({ ...saved, photoUrl });
+      })().catch(console.error);
     } catch (error) {
       console.error('[local] insert meal failed', error);
       alert('食事の保存に失敗しました。もう一度お試しください。');
@@ -87,6 +121,7 @@ export function useAppData() {
     try {
       const saved = await updateStoredMeal(updated);
       setMeals((prev) => prev.map((m) => (m.id === saved.id ? saved : m)));
+      sbUpsertMeal(saved).catch(console.error);
     } catch (error) {
       console.error('[local] update meal failed', error);
       alert('食事の更新に失敗しました。');
@@ -96,6 +131,7 @@ export function useAppData() {
   const deleteMeal = useCallback(async (id: string) => {
     setMeals((prev) => prev.filter((m) => m.id !== id));
     await deleteStoredMeal(id);
+    sbDeleteMeal(id).catch(console.error);
   }, []);
 
   const addExercise = useCallback(async (
@@ -104,6 +140,7 @@ export function useAppData() {
     try {
       const saved = await insertExercise({ ...data, date: data.date ?? todayString() });
       setExercises((prev) => [saved, ...prev]);
+      sbUpsertExercise(saved).catch(console.error);
     } catch (error) {
       console.error('[local] insert exercise failed', error);
       alert('運動の保存に失敗しました。もう一度お試しください。');
@@ -114,6 +151,7 @@ export function useAppData() {
     try {
       const saved = await updateStoredExercise(updated);
       setExercises((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
+      sbUpsertExercise(saved).catch(console.error);
     } catch (error) {
       console.error('[local] update exercise failed', error);
       alert('運動の更新に失敗しました。');
@@ -123,12 +161,14 @@ export function useAppData() {
   const deleteExercise = useCallback(async (id: string) => {
     setExercises((prev) => prev.filter((e) => e.id !== id));
     await deleteStoredExercise(id);
+    sbDeleteExercise(id).catch(console.error);
   }, []);
 
   const addWeight = useCallback(async (data: Omit<WeightEntry, 'id'>) => {
     try {
       const saved = await insertWeight(data);
       setWeights((prev) => [saved, ...prev]);
+      sbUpsertWeight(saved).catch(console.error);
     } catch (error) {
       console.error('[local] insert weight failed', error);
       alert('体重の保存に失敗しました。もう一度お試しください。');
@@ -138,6 +178,7 @@ export function useAppData() {
   const deleteWeight = useCallback(async (id: string) => {
     setWeights((prev) => prev.filter((w) => w.id !== id));
     await deleteStoredWeight(id);
+    sbDeleteWeight(id).catch(console.error);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<AppSettings>) => {
@@ -152,6 +193,7 @@ export function useAppData() {
     try {
       const saved = await insertGymSession(new Date().toISOString());
       setGymSession(saved);
+      sbUpsertGymSession(saved).catch(console.error);
     } catch (error) {
       console.error('[local] start gym failed', error);
       alert('ジムセッションの開始に失敗しました。');
@@ -167,13 +209,17 @@ export function useAppData() {
       );
       const next: GymSession = { ...prev, endedAt, durationSec, status: 'completed' };
       updateGymSession(next).catch((e) => console.error('endGym sync failed', e));
+      sbUpsertGymSession(next).catch(console.error);
       return next;
     });
   }, []);
 
   const cancelGym = useCallback(() => {
     setGymSession((prev) => {
-      if (prev) deleteGymSession(prev.id).catch(console.error);
+      if (prev) {
+        deleteGymSession(prev.id).catch(console.error);
+        sbDeleteGymSession(prev.id).catch(console.error);
+      }
       return null;
     });
   }, []);
@@ -183,6 +229,7 @@ export function useAppData() {
       if (!prev) return prev;
       const next: GymSession = { ...prev, memo };
       updateGymSession(next).catch((e) => console.error('memo sync failed', e));
+      sbUpsertGymSession(next).catch(console.error);
       return next;
     });
   }, []);
@@ -204,6 +251,8 @@ export function useAppData() {
       insertExercise(exerciseData)
         .then((saved) => {
           setExercises((ex) => [saved, ...ex]);
+          sbUpsertExercise(saved).catch(console.error);
+          sbDeleteGymSession(prev.id).catch(console.error);
           return deleteGymSession(prev.id);
         })
         .catch((err) => {

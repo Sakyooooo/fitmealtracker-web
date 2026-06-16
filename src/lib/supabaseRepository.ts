@@ -4,7 +4,7 @@
  */
 
 import { supabase, supabaseEnabled } from './supabase';
-import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction } from './types';
+import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction, WeightEntry, GymSession, WorkoutSet } from './types';
 import { ensureAuthUserId } from './identity';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -185,6 +185,125 @@ export async function sbFetchMyFoods(): Promise<MyFood[] | null> {
   return (data ?? []).map((r) => fromSupaMyFood(r as Record<string, unknown>));
 }
 
+// ── Weights（体重の端末間同期。本人専用・フレンド非公開） ──────────────────────
+
+// 007_weights_gym_sessions.sql 未適用の環境ではテーブルが無い。
+// 最初の失敗で同期を停止し、ローカル保存のみで動作させる（エラー連発を防ぐ）。
+let weightsUnavailable = false;
+let gymSessionsUnavailable = false;
+function noteSyncTableMissing(label: string, msg: string): boolean {
+  // テーブル未作成（PostgREST: PGRST205 / "Could not find the table"）か判定
+  const missing = msg.includes('Could not find the table') || msg.includes('does not exist');
+  if (missing) {
+    console.warn(`[${label}] テーブル未作成のため同期を無効化します（supabase/migrations/007_weights_gym_sessions.sql を実行すると有効化）`);
+  } else {
+    console.error(`[supabaseRepository] ${label}:`, msg);
+  }
+  return missing;
+}
+
+function toSupaWeight(w: WeightEntry, userId: string) {
+  return {
+    id:        w.id,
+    user_id:   userId,
+    date:      w.date,
+    weight_kg: w.weightKg,
+    note:      w.note ?? null,
+  };
+}
+
+function fromSupaWeight(r: Record<string, unknown>): WeightEntry {
+  return {
+    id:       r.id as string,
+    date:     r.date as string,
+    weightKg: Number(r.weight_kg),
+    note:     (r.note as string | null) ?? undefined,
+  };
+}
+
+export async function sbUpsertWeight(weight: WeightEntry): Promise<void> {
+  if (!supabaseEnabled || !supabase || weightsUnavailable) return;
+  const userId = await ensureAuthUserId();
+  const { error } = await supabase.from('weights').upsert(toSupaWeight(weight, userId));
+  if (error) weightsUnavailable = noteSyncTableMissing('weights', error.message);
+}
+
+export async function sbDeleteWeight(id: string): Promise<void> {
+  if (!supabaseEnabled || !supabase || weightsUnavailable) return;
+  const { error } = await supabase.from('weights').delete().eq('id', id);
+  if (error) weightsUnavailable = noteSyncTableMissing('weights', error.message);
+}
+
+export async function sbFetchMyWeights(): Promise<WeightEntry[] | null> {
+  if (!supabaseEnabled || !supabase || weightsUnavailable) return null;
+  const userId = await ensureAuthUserId();
+  const { data, error } = await supabase
+    .from('weights')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+  if (error) { weightsUnavailable = noteSyncTableMissing('weights', error.message); return null; }
+  return (data ?? []).map((r) => fromSupaWeight(r as Record<string, unknown>));
+}
+
+// ── Gym Sessions（ジムセッションの端末間同期。本人専用・フレンド非公開） ─────────
+
+function toSupaGymSession(s: GymSession, userId: string) {
+  return {
+    id:                        s.id,
+    user_id:                   userId,
+    started_at:                s.startedAt,
+    ended_at:                  s.endedAt ?? null,
+    duration_sec:              s.durationSec ?? null,
+    estimated_calories_burned: s.estimatedCaloriesBurned ?? null,
+    memo:                      s.memo ?? null,
+    workout_sets:              s.workoutSets ?? null,
+    status:                    s.status,
+  };
+}
+
+function fromSupaGymSession(r: Record<string, unknown>): GymSession {
+  return {
+    id:                      r.id as string,
+    startedAt:               r.started_at as string,
+    endedAt:                 (r.ended_at as string | null) ?? undefined,
+    durationSec:             r.duration_sec == null ? undefined : Number(r.duration_sec),
+    estimatedCaloriesBurned: r.estimated_calories_burned == null ? undefined : Number(r.estimated_calories_burned),
+    memo:                    (r.memo as string | null) ?? undefined,
+    workoutSets:             (r.workout_sets as WorkoutSet[] | null) ?? undefined,
+    status:                  r.status as GymSession['status'],
+  };
+}
+
+export async function sbUpsertGymSession(session: GymSession): Promise<void> {
+  if (!supabaseEnabled || !supabase || gymSessionsUnavailable) return;
+  const userId = await ensureAuthUserId();
+  const { error } = await supabase.from('gym_sessions').upsert(toSupaGymSession(session, userId));
+  if (error) gymSessionsUnavailable = noteSyncTableMissing('gym_sessions', error.message);
+}
+
+export async function sbDeleteGymSession(id: string): Promise<void> {
+  if (!supabaseEnabled || !supabase || gymSessionsUnavailable) return;
+  const { error } = await supabase.from('gym_sessions').delete().eq('id', id);
+  if (error) gymSessionsUnavailable = noteSyncTableMissing('gym_sessions', error.message);
+}
+
+/** 進行中（active）のジムセッションを1件取得。別端末で開始したセッションの引き継ぎ用。 */
+export async function sbFetchActiveGymSession(): Promise<GymSession | null> {
+  if (!supabaseEnabled || !supabase || gymSessionsUnavailable) return null;
+  const userId = await ensureAuthUserId();
+  const { data, error } = await supabase
+    .from('gym_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) { gymSessionsUnavailable = noteSyncTableMissing('gym_sessions', error.message); return null; }
+  return data ? fromSupaGymSession(data as Record<string, unknown>) : null;
+}
+
 // ── Migration: localStorage → Supabase ───────────────────────────────────────
 
 export async function migrateLocalToSupabase(
@@ -237,22 +356,24 @@ export async function fetchTimeline(
 
   try {
     // 食事
-    const { data: mealsData } = await supabase
+    const { data: mealsData, error: mealsError } = await supabase
       .from('meals')
-      .select('id, user_id, name, calories, category, date, note, protein, fat, carbs, photo_url, created_at, users!meals_user_id_fkey(display_name, friend_code, avatar_url)')
+      .select('id, user_id, name, calories, category, date, note, protein, fat, carbs, photo_url, created_at, users(display_name, friend_code, avatar_url)')
       .in('user_id', friendIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(limit);
+    if (mealsError) console.error('[fetchTimeline] meals:', mealsError.message);
 
     // 運動
-    const { data: exercisesData } = await supabase
+    const { data: exercisesData, error: exercisesError } = await supabase
       .from('exercises')
-      .select('id, user_id, name, calories_burned, duration_minutes, date, note, type, created_at, users!exercises_user_id_fkey(display_name, friend_code, avatar_url)')
+      .select('id, user_id, name, calories_burned, duration_minutes, date, note, type, created_at, users(display_name, friend_code, avatar_url)')
       .in('user_id', friendIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(limit);
+    if (exercisesError) console.error('[fetchTimeline] exercises:', exercisesError.message);
 
     // 取得した全 record_id のリアクションを一括取得
     const allIds = [
