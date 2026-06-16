@@ -161,6 +161,17 @@ export type Reaction = {
   created_at: string;
 };
 
+export type Comment = {
+  id: string;
+  from_user_id: string;
+  record_id: string;
+  record_type: 'meal' | 'exercise';
+  body: string;
+  created_at: string;
+  display_name?: string | null;  // 投稿者の表示名（JOIN 済み）
+  avatar_url?: string | null;     // 投稿者のアバター（JOIN 済み）
+};
+
 /** タイムラインの1アイテム（meal or exercise） */
 export type TimelineItem = {
   id: string;
@@ -189,6 +200,8 @@ export type TimelineItem = {
   // リアクション
   reactions: Reaction[];
   my_reaction: ReactionEmoji | null;
+  // コメント（新着順=作成順）
+  comments: Comment[];
 };
 
 export type GymSessionStatus = 'active' | 'completed' | 'canceled';

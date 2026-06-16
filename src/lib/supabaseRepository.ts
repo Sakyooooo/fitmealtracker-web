@@ -4,7 +4,7 @@
  */
 
 import { supabase, supabaseEnabled } from './supabase';
-import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction, WeightEntry, GymSession, WorkoutSet } from './types';
+import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction, Comment, WeightEntry, GymSession, WorkoutSet } from './types';
 import { ensureAuthUserId } from './identity';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -387,8 +387,33 @@ export async function fetchTimeline(
 
     const reactions = (reactionsData ?? []) as Reaction[];
 
+    // コメント（投稿者の表示名/アバターを JOIN）。008 未適用ならエラーを無視して空に。
+    const { data: commentsData, error: commentsError } = allIds.length > 0
+      ? await supabase
+          .from('comments')
+          .select('id, from_user_id, record_id, record_type, body, created_at, users(display_name, avatar_url)')
+          .in('record_id', allIds)
+          .order('created_at', { ascending: true })
+      : { data: [], error: null };
+    if (commentsError) console.warn('[fetchTimeline] comments:', commentsError.message);
+
+    const comments: Comment[] = (commentsData ?? []).map((c) => {
+      const u = (c.users as unknown) as { display_name: string | null; avatar_url: string | null } | null;
+      return {
+        id:           c.id as string,
+        from_user_id: c.from_user_id as string,
+        record_id:    c.record_id as string,
+        record_type:  c.record_type as 'meal' | 'exercise',
+        body:         c.body as string,
+        created_at:   c.created_at as string,
+        display_name: u?.display_name ?? null,
+        avatar_url:   u?.avatar_url ?? null,
+      };
+    });
+
     // helpers
     const reactionsFor = (id: string) => reactions.filter((r) => r.record_id === id);
+    const commentsFor = (id: string) => comments.filter((c) => c.record_id === id);
     const myReaction = (id: string): ReactionEmoji | null =>
       (reactions.find((r) => r.record_id === id && r.from_user_id === myUserId)?.emoji as ReactionEmoji) ?? null;
 
@@ -414,6 +439,7 @@ export async function fetchTimeline(
         created_at:   m.created_at as string,
         reactions:    reactionsFor(m.id as string),
         my_reaction:  myReaction(m.id as string),
+        comments:     commentsFor(m.id as string),
       };
     });
 
@@ -436,6 +462,7 @@ export async function fetchTimeline(
         created_at:       e.created_at as string,
         reactions:        reactionsFor(e.id as string),
         my_reaction:      myReaction(e.id as string),
+        comments:         commentsFor(e.id as string),
       };
     });
 
@@ -451,32 +478,79 @@ export async function fetchTimeline(
 
 // ── Reactions ─────────────────────────────────────────────────────────────────
 
+/**
+ * 投稿(meal/exercise)へのリアクションを追加/変更。
+ * from_user_id は auth.uid() を使用（RLS準拠）。1ユーザー1投稿1件のため、
+ * (from_user_id, record_id) の UNIQUE で onConflict 更新する（絵文字の付け替えに対応）。
+ */
 export async function upsertReaction(
-  fromUserId: string,
   recordId: string,
   recordType: 'meal' | 'exercise',
   emoji: ReactionEmoji,
 ): Promise<boolean> {
   if (!supabaseEnabled || !supabase) return false;
-  const { error } = await supabase.from('reactions').upsert({
-    from_user_id: fromUserId,
-    record_id:    recordId,
-    record_type:  recordType,
-    emoji,
-  });
+  const userId = await ensureAuthUserId();
+  const { error } = await supabase.from('reactions').upsert(
+    {
+      from_user_id: userId,
+      record_id:    recordId,
+      record_type:  recordType,
+      emoji,
+    },
+    { onConflict: 'from_user_id,record_id' },
+  );
   if (error) { console.error('[upsertReaction]', error.message); return false; }
   return true;
 }
 
-export async function deleteReaction(
-  fromUserId: string,
-  recordId: string,
-): Promise<boolean> {
+export async function deleteReaction(recordId: string): Promise<boolean> {
   if (!supabaseEnabled || !supabase) return false;
+  const userId = await ensureAuthUserId();
   const { error } = await supabase.from('reactions')
     .delete()
-    .eq('from_user_id', fromUserId)
+    .eq('from_user_id', userId)
     .eq('record_id', recordId);
   if (error) { console.error('[deleteReaction]', error.message); return false; }
+  return true;
+}
+
+// ── Comments ────────────────────────────────────────────────────────────────────
+
+/**
+ * 投稿(meal/exercise)へコメントを追加。from_user_id は auth.uid() を使用（RLS準拠）。
+ * 成功時は作成された Comment（投稿者表示名/アバター付き）を返す。
+ */
+export async function addComment(
+  recordId: string,
+  recordType: 'meal' | 'exercise',
+  body: string,
+): Promise<Comment | null> {
+  if (!supabaseEnabled || !supabase) return null;
+  const text = body.trim();
+  if (!text) return null;
+  const userId = await ensureAuthUserId();
+  const { data, error } = await supabase
+    .from('comments')
+    .insert({ from_user_id: userId, record_id: recordId, record_type: recordType, body: text })
+    .select('id, from_user_id, record_id, record_type, body, created_at, users(display_name, avatar_url)')
+    .single();
+  if (error) { console.error('[addComment]', error.message); return null; }
+  const u = (data.users as unknown) as { display_name: string | null; avatar_url: string | null } | null;
+  return {
+    id:           data.id as string,
+    from_user_id: data.from_user_id as string,
+    record_id:    data.record_id as string,
+    record_type:  data.record_type as 'meal' | 'exercise',
+    body:         data.body as string,
+    created_at:   data.created_at as string,
+    display_name: u?.display_name ?? null,
+    avatar_url:   u?.avatar_url ?? null,
+  };
+}
+
+export async function deleteComment(commentId: string): Promise<boolean> {
+  if (!supabaseEnabled || !supabase) return false;
+  const { error } = await supabase.from('comments').delete().eq('id', commentId);
+  if (error) { console.error('[deleteComment]', error.message); return false; }
   return true;
 }
