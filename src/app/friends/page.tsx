@@ -80,7 +80,7 @@ export default function FriendsPage() {
     addFriend, removeFriend, updateNickname, clearError,
   } = useFriends();
 
-  const { items: timeline, loading: tlLoading, load: loadTimeline, react } = useTimeline();
+  const { items: timeline, loading: tlLoading, load: loadTimeline, react, addComment, deleteComment } = useTimeline();
 
   const [tab, setTab] = useState<'timeline' | 'globe'>('timeline');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null); // null = 全体
@@ -118,6 +118,7 @@ export default function FriendsPage() {
   }, [userId, friends, loadTimeline]);
 
   const myDisplayName = displayName ?? friendCode ?? 'You';
+  const meId = userId ?? '__me__';
 
   // 各ユーザーの最終記録時刻（球カード表示用）
   const lastActivityByUser = useMemo(() => {
@@ -202,6 +203,42 @@ export default function FriendsPage() {
     }
     react(item, emoji);
   }, [react]);
+
+  // コメント追加: デモ投稿はローカル更新、実投稿は Supabase 経由
+  const handleAddComment = useCallback((item: TimelineItem, body: string) => {
+    const text = body.trim();
+    if (!text) return;
+    if (item.id.startsWith(DEMO_PREFIX)) {
+      setDemoItems((prev) => prev.map((it) => (it.id === item.id
+        ? {
+            ...it,
+            comments: [...it.comments, {
+              id: `${DEMO_PREFIX}c-${Date.now()}`,
+              from_user_id: meId,
+              record_id: it.id,
+              record_type: it.type,
+              body: text,
+              created_at: new Date().toISOString(),
+              display_name: myDisplayName,
+              avatar_url: myAvatarUrl ?? null,
+            }],
+          }
+        : it)));
+      return;
+    }
+    addComment(item, text, { id: meId, name: myDisplayName, avatarUrl: myAvatarUrl });
+  }, [addComment, meId, myDisplayName, myAvatarUrl]);
+
+  // コメント削除
+  const handleDeleteComment = useCallback((item: TimelineItem, commentId: string) => {
+    if (item.id.startsWith(DEMO_PREFIX)) {
+      setDemoItems((prev) => prev.map((it) => (it.id === item.id
+        ? { ...it, comments: it.comments.filter((c) => c.id !== commentId) }
+        : it)));
+      return;
+    }
+    deleteComment(item, commentId);
+  }, [deleteComment]);
 
   // 像タップ: その人の記録をポップアップ表示（自分・フレンド共通）
   const handleSelectUser = useCallback((u: GlobeUser) => {
@@ -418,6 +455,9 @@ export default function FriendsPage() {
                       key={item.id}
                       item={item}
                       onReact={handleReact}
+                      onAddComment={handleAddComment}
+                      onDeleteComment={handleDeleteComment}
+                      meId={meId}
                       isMe={item.user_id === userId}
                     />
                   ))}

@@ -62,6 +62,9 @@ export const DEMO_TIMELINE: TimelineItem[] = [
       { id: `${DEMO_PREFIX}r2`, from_user_id: FRIEND_KEN, record_id: `${DEMO_PREFIX}post-1`, record_type: 'exercise', emoji: '💪', created_at: minutesAgo(25) },
     ],
     my_reaction: null,
+    comments: [
+      { id: `${DEMO_PREFIX}c1`, from_user_id: FRIEND_KEN, record_id: `${DEMO_PREFIX}post-1`, record_type: 'exercise', body: 'ナイスラン！🏃 自分も走ってきます', created_at: minutesAgo(20), display_name: 'Ken', avatar_url: KEN_AVATAR },
+    ],
   },
   {
     id: `${DEMO_PREFIX}post-2`,
@@ -84,6 +87,9 @@ export const DEMO_TIMELINE: TimelineItem[] = [
       { id: `${DEMO_PREFIX}r3`, from_user_id: FRIEND_AOI, record_id: `${DEMO_PREFIX}post-2`, record_type: 'meal', emoji: '👍', created_at: minutesAgo(120) },
     ],
     my_reaction: null,
+    comments: [
+      { id: `${DEMO_PREFIX}c2`, from_user_id: FRIEND_AOI, record_id: `${DEMO_PREFIX}post-2`, record_type: 'meal', body: 'おいしそう！レシピ教えて〜', created_at: minutesAgo(110), display_name: 'Aoi', avatar_url: AOI_AVATAR },
+    ],
   },
   {
     id: `${DEMO_PREFIX}post-3`,
@@ -104,5 +110,6 @@ export const DEMO_TIMELINE: TimelineItem[] = [
     created_at: minutesAgo(310),
     reactions: [],
     my_reaction: null,
+    comments: [],
   },
 ];
