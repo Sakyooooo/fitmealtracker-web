@@ -9,6 +9,9 @@ import {
   deleteGymSession,
   insertExercise,
 } from '@/lib/localRepository';
+import {
+  sbUpsertGymSession, sbDeleteGymSession, sbUpsertExercise,
+} from '@/lib/supabaseRepository';
 
 type Options = {
   /** ジムセッションを運動記録として保存した際に呼ばれるコールバック */
@@ -31,6 +34,7 @@ export function useGymData({ onExerciseSaved }: Options) {
     try {
       const saved = await insertGymSession(new Date().toISOString());
       setGymSession(saved);
+      sbUpsertGymSession(saved).catch(console.error);
     } catch (error) {
       console.error('[useGymData] startGym', error);
       alert('ジムセッションの開始に失敗しました。');
@@ -46,13 +50,17 @@ export function useGymData({ onExerciseSaved }: Options) {
       );
       const next: GymSession = { ...prev, endedAt, durationSec, status: 'completed' };
       updateGymSession(next).catch((e) => console.error('endGym sync failed', e));
+      sbUpsertGymSession(next).catch(console.error);
       return next;
     });
   }, []);
 
   const cancelGym = useCallback(() => {
     setGymSession((prev) => {
-      if (prev) deleteGymSession(prev.id).catch(console.error);
+      if (prev) {
+        deleteGymSession(prev.id).catch(console.error);
+        sbDeleteGymSession(prev.id).catch(console.error);
+      }
       return null;
     });
   }, []);
@@ -62,6 +70,7 @@ export function useGymData({ onExerciseSaved }: Options) {
       if (!prev) return prev;
       const next: GymSession = { ...prev, memo };
       updateGymSession(next).catch((e) => console.error('memo sync failed', e));
+      sbUpsertGymSession(next).catch(console.error);
       return next;
     });
   }, []);
@@ -87,6 +96,8 @@ export function useGymData({ onExerciseSaved }: Options) {
       // 運動記録の保存に成功してから session を削除する
       const saved = await insertExercise(exerciseData);
       onExerciseSaved(saved);
+      sbUpsertExercise(saved).catch(console.error);
+      sbDeleteGymSession(session.id).catch(console.error);
       await deleteGymSession(session.id);
       setGymSession(null);
     } catch (err) {

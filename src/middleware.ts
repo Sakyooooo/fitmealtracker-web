@@ -8,12 +8,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/meal', request.url));
   }
 
-  // Retired routes → data with correct tab
+  // 旧ルート → すべてマイページ(/profile)へ。カレンダー/統計/体重はマイページ内タブ。
   if (pathname.startsWith('/weight')) {
-    return NextResponse.redirect(new URL('/data?tab=weight', request.url));
+    return NextResponse.redirect(new URL('/profile?tab=weight', request.url));
   }
-  if (pathname.startsWith('/calendar')) {
-    return NextResponse.redirect(new URL('/data?tab=calendar', request.url));
+  if (pathname.startsWith('/calendar') || pathname.startsWith('/data')) {
+    return NextResponse.redirect(new URL('/profile', request.url));
   }
 
   return NextResponse.next();
