@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GEMINI_ENDPOINT, GEMINI_FALLBACK, extractJson } from '@/lib/gemini';
 import { MealAnalysisResult } from '@/lib/types';
-import { applyNutritionDb } from '@/lib/nutritionDb';
+import { applyNutritionDb, lookupNutrition } from '@/lib/nutritionDb';
 import { isAllowedRequestOrigin } from '@/lib/apiOrigin';
 
 // ── Security: feature flag ────────────────────────────────────────────────────
@@ -96,6 +96,80 @@ function buildTextPrompt(dish: string): string {
 JSONのみで回答してください。`;
 }
 
+// 複数料理をまとめて分解・推定する場合のプロンプト（テキスト入力）。
+function buildMultiTextPrompt(text: string): string {
+  return `あなたは日本の管理栄養士です。次の食事メモに含まれる料理・食品を**それぞれ分解**し、各料理について日本の一般的な一人前を基準に栄養を推定してください。
+入力: 「${text}」
+- items 配列で、各料理を {name(料理名), calories(kcal), protein, fat, carbs(g)} として返す。
+- 「と」「や」「、」などで複数の料理が書かれていれば、すべて個別の要素として列挙する。
+- 同じ料理が重複していれば1件にまとめ量に反映する。
+- 各 calories は概算でよいが null は避ける。PFCは自信が無ければ null 可。
+JSONのみで回答してください。`;
+}
+
+// 複数推定モードの構造化出力スキーマ。
+const MULTI_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          calories: { type: 'number', nullable: true },
+          protein: { type: 'number', nullable: true },
+          fat: { type: 'number', nullable: true },
+          carbs: { type: 'number', nullable: true },
+        },
+        required: ['name', 'calories'],
+      },
+    },
+  },
+  required: ['items'],
+};
+
+type MultiItem = {
+  name: string;
+  kcal: number;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+  serving: string | null;
+  source: 'db' | 'ai';
+};
+
+const numOrNull = (v: unknown): number | null => (typeof v === 'number' && isFinite(v) ? v : null);
+
+/** Gemini の items を、静的成分表優先で MultiItem[] に整える。 */
+function parseMultiItems(parsed: unknown): MultiItem[] {
+  const raw = (parsed as { items?: unknown })?.items;
+  if (!Array.isArray(raw)) return [];
+  const out: MultiItem[] = [];
+  for (const it of raw) {
+    const name = typeof (it as { name?: unknown })?.name === 'string' ? (it as { name: string }).name.trim() : '';
+    if (!name) continue;
+    const db = lookupNutrition(name);
+    if (db) {
+      out.push({ name, kcal: db.kcal, protein: db.p, fat: db.f, carbs: db.c, serving: db.serving, source: 'db' });
+      continue;
+    }
+    const kcal = numOrNull((it as { calories?: unknown }).calories);
+    if (kcal == null || kcal <= 0) continue;
+    out.push({
+      name,
+      kcal: Math.round(kcal),
+      protein: numOrNull((it as { protein?: unknown }).protein),
+      fat: numOrNull((it as { fat?: unknown }).fat),
+      carbs: numOrNull((it as { carbs?: unknown }).carbs),
+      serving: '1人前',
+      source: 'ai',
+    });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
 
 function normalizeResult(value: Partial<MealAnalysisResult>): MealAnalysisResult {
@@ -155,6 +229,7 @@ export async function POST(request: Request) {
 
   let parts: Array<Record<string, unknown>>;
   let isTextMode = false;
+  let isMulti = false;
   if (image instanceof File && image.type.startsWith('image/')) {
     if (image.size > MAX_IMAGE_SIZE_BYTES) {
       return NextResponse.json({ error: 'image is too large' }, { status: 413 });
@@ -165,8 +240,10 @@ export async function POST(request: Request) {
       { inline_data: { mime_type: image.type, data: base64 } },
     ];
   } else if (typeof nameField === 'string' && nameField.trim()) {
-    parts = [{ text: buildTextPrompt(nameField.trim().slice(0, 60)) }];
     isTextMode = true;
+    isMulti = formData.get('mode') === 'multi';
+    const dish = nameField.trim().slice(0, isMulti ? 200 : 60);
+    parts = [{ text: isMulti ? buildMultiTextPrompt(dish) : buildTextPrompt(dish) }];
   } else {
     return NextResponse.json({ error: 'image file or name is required' }, { status: 400 });
   }
@@ -177,7 +254,7 @@ export async function POST(request: Request) {
     generationConfig: {
       temperature: 0.2,
       responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
+      responseSchema: isMulti ? MULTI_RESPONSE_SCHEMA : RESPONSE_SCHEMA,
     },
   };
 
@@ -192,6 +269,12 @@ export async function POST(request: Request) {
   if (!text) return NextResponse.json(GEMINI_FALLBACK);
 
   const parsed = extractJson(text) as (MealAnalysisResult & { portion?: string | null }) | null;
+
+  // 複数推定モード: 分解した品目リストを返す
+  if (isMulti) {
+    return NextResponse.json({ items: parseMultiItems(parsed) });
+  }
+
   const normalized = normalizeResult(parsed ?? {});
   // 料理名は AI、カロリー/PFC は栄養成分表で決定的に算出（ヒット時のみ上書き）。
   // テキスト推定では候補での誤マッチを避けるため入力名のみで照合する。

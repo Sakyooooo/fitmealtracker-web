@@ -246,3 +246,80 @@ export async function updateDisplayName(
     return false;
   }
 }
+
+// ── アカウント連携 / サインイン（任意・データ復元用） ──────────────────────────
+//
+// 既定は匿名ユーザー。希望者だけ Google / メールを「連携」して永続化すると、
+// 端末を変えても・ストレージを消しても、サインインで同じ uid に復帰できる。
+//   - linkGoogle / linkEmail : 現在の匿名アカウントを格上げ（uid 維持）
+//   - signInWithGoogle / signInWithEmail : 別端末/初期化後に連携済みアカウントへ復帰
+// ※ いずれも Supabase ダッシュボードでプロバイダ設定（Google有効化／メール送信）が必要。
+
+export type AuthInfo = {
+  isAnonymous: boolean;
+  email: string | null;
+  providers: string[]; // 例: 'google', 'email'
+};
+
+/** 現在の認証状態を返す（匿名か、連携済みか）。 */
+export async function getAuthInfo(): Promise<AuthInfo | null> {
+  if (!supabaseEnabled || !supabase) return null;
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  const u = data.user;
+  const providers = (u.identities ?? [])
+    .map((i) => i.provider)
+    .filter((p) => p !== 'anonymous');
+  const isAnon = (u as { is_anonymous?: boolean }).is_anonymous ?? (!u.email && providers.length === 0);
+  return { isAnonymous: isAnon, email: u.email ?? null, providers };
+}
+
+function authRedirectTo(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return `${window.location.origin}/profile`;
+}
+
+/** 現在の(匿名)アカウントに Google を紐付けて永続化（同じ uid を保持）。 */
+export async function linkGoogle(): Promise<{ error: string | null }> {
+  if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
+  const { error } = await supabase.auth.linkIdentity({
+    provider: 'google',
+    options: { redirectTo: authRedirectTo() },
+  });
+  return { error: error?.message ?? null };
+}
+
+/** 現在の(匿名)アカウントにメールを紐付け（確認メールが届く）。 */
+export async function linkEmail(email: string): Promise<{ error: string | null }> {
+  if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
+  const { error } = await supabase.auth.updateUser(
+    { email: email.trim() },
+    { emailRedirectTo: authRedirectTo() },
+  );
+  return { error: error?.message ?? null };
+}
+
+/** 別端末/初期化後に、連携済み Google アカウントへサインインして復帰。 */
+export async function signInWithGoogle(): Promise<{ error: string | null }> {
+  if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: authRedirectTo() },
+  });
+  return { error: error?.message ?? null };
+}
+
+/** 連携済みメールへマジックリンクを送ってサインイン（復帰）。 */
+export async function signInWithEmail(email: string): Promise<{ error: string | null }> {
+  if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
+  const { error } = await supabase.auth.signInWithOtp({
+    email: email.trim(),
+    options: { emailRedirectTo: authRedirectTo() },
+  });
+  return { error: error?.message ?? null };
+}
+
+export async function signOutAuth(): Promise<void> {
+  if (!supabaseEnabled || !supabase) return;
+  try { await supabase.auth.signOut(); } catch { /* ignore */ }
+}
