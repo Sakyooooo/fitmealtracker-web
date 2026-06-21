@@ -46,6 +46,33 @@ export async function analyzeWithGemini(file: File): Promise<MealAnalysisResult>
   }
 }
 
+/** 複数推定（mode=multi）で返る1料理分。 */
+export type AiMealItem = {
+  name: string;
+  kcal: number;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+  serving: string | null;
+  source: 'db' | 'ai';
+};
+
+/** 食事メモを複数料理に分解して栄養を推定（写真なし）。失敗時は空配列。 */
+export async function estimateMealsByText(text: string): Promise<AiMealItem[]> {
+  const formData = new FormData();
+  formData.append('name', text);
+  formData.append('mode', 'multi');
+  try {
+    const res = await fetch('/api/analyze-meal', { method: 'POST', body: formData });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { items?: AiMealItem[] };
+    return Array.isArray(data.items) ? data.items : [];
+  } catch (e) {
+    console.error('[gemini multi]', e);
+    return [];
+  }
+}
+
 /** 食事名テキストだけから Gemini にカロリー/PFCを推定させる（写真なし）。 */
 export async function estimateMealByName(name: string): Promise<MealAnalysisResult> {
   const formData = new FormData();

@@ -25,6 +25,7 @@ import WeightCard from '@/components/weight/WeightCard';
 import AddWeightModal from '@/components/weight/AddWeightModal';
 import CalendarView from '@/components/calendar/CalendarView';
 import DayDetailModal from '@/components/calendar/DayDetailModal';
+import AccountLinkCard from '@/components/profile/AccountLinkCard';
 import Modal from '@/components/ui/Modal';
 
 const ACCENT = '#AB47BC';
@@ -302,6 +303,10 @@ function ProfileInner() {
               <InfoRow label="現在の体重" value={latestWeight != null ? `${latestWeight} kg` : '未記録'} />
               <InfoRow label="目標体重" value={settings.targetWeightKg != null ? `${settings.targetWeightKg} kg` : '未設定'} />
               <InfoRow label="目標摂取カロリー" value={settings.targetIntakeCalories != null ? `${settings.targetIntakeCalories} kcal` : '未設定'} last />
+            </div>
+
+            <div className="mt-5">
+              <AccountLinkCard />
             </div>
           </>
         )}

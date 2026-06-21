@@ -6,6 +6,7 @@
 import { supabase, supabaseEnabled } from './supabase';
 import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction, Comment, WeightEntry, GymSession, WorkoutSet } from './types';
 import { ensureAuthUserId } from './identity';
+import { bulkImportMeals, bulkImportExercises, bulkImportWeights, bulkImportMyFoods } from './localRepository';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +112,26 @@ export async function sbDeleteExercise(id: string): Promise<void> {
   if (error) console.error('[supabaseRepository] deleteExercise:', error.message);
 }
 
+export async function sbFetchMyExercises(): Promise<ExerciseEntry[] | null> {
+  if (!supabaseEnabled || !supabase) return null;
+  const userId = await ensureAuthUserId();
+  const { data, error } = await supabase
+    .from('exercises')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+  if (error) { console.error('[supabaseRepository] fetchMyExercises:', error.message); return null; }
+  return (data ?? []).map((r) => ({
+    id:              r.id as string,
+    name:            r.name as string,
+    durationMinutes: r.duration_minutes as number,
+    caloriesBurned:  r.calories_burned as number,
+    date:            r.date as string,
+    note:            (r.note as string | null) ?? '',
+    type:            (r.type as ExerciseEntry['type']) ?? 'normal',
+  }));
+}
+
 // ── My Foods（マイ食品の端末間同期） ─────────────────────────────────────────
 
 // 006_my_foods.sql 未適用の環境ではテーブルが無い。最初の失敗で同期を停止し、
@@ -183,6 +204,35 @@ export async function sbFetchMyFoods(): Promise<MyFood[] | null> {
     .order('updated_at', { ascending: false });
   if (error) { noteMyFoodsError(error.message); return null; }
   return (data ?? []).map((r) => fromSupaMyFood(r as Record<string, unknown>));
+}
+
+// ── クラウド復元（端末をまたいで自分の記録をローカルへ取り込む） ────────────────
+
+/**
+ * Supabase 上の自分の記録（食事/運動/体重/マイ食品）をローカルへ取り込む。
+ * 連携アカウントへサインインし直した後の「クラウドから復元」用。
+ * 重複（同じ id）は bulkImport 側で自動スキップ。取り込み件数を返す。
+ * ※ 食事写真は端末ローカル(IndexedDB)管理のため、写真自体は復元されない。
+ */
+export async function syncDownAllFromSupabase(): Promise<{
+  meals: number; exercises: number; weights: number; myFoods: number;
+}> {
+  const [meals, exercises, weights, myFoods] = await Promise.all([
+    sbFetchMyMeals(),
+    sbFetchMyExercises(),
+    sbFetchMyWeights(),
+    sbFetchMyFoods(),
+  ]);
+  if (meals)     await bulkImportMeals(meals);
+  if (exercises) await bulkImportExercises(exercises);
+  if (weights)   await bulkImportWeights(weights);
+  if (myFoods)   bulkImportMyFoods(myFoods);
+  return {
+    meals:     meals?.length ?? 0,
+    exercises: exercises?.length ?? 0,
+    weights:   weights?.length ?? 0,
+    myFoods:   myFoods?.length ?? 0,
+  };
 }
 
 // ── Weights（体重の端末間同期。本人専用・フレンド非公開） ──────────────────────
