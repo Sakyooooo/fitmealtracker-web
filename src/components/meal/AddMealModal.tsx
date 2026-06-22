@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Modal from '@/components/ui/Modal';
 import {
@@ -8,7 +8,8 @@ import {
   FoodCompositionItem, NutritionBasis,
 } from '@/lib/types';
 import { todayString } from '@/lib/stats';
-import { analyzeMealPhotoCached, estimateMealComponents, sumComponents, type MealComponent } from '@/lib/aiNutrition';
+import { analyzeMealPhotoCached, estimateMealByNameCached } from '@/lib/aiNutrition';
+import MultiDishPicker, { type MultiTotal } from '@/components/meal/MultiDishPicker';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
 import { searchFoods } from '@/lib/foodComposition';
 import { searchDishes } from '@/lib/nutritionDb';
@@ -96,8 +97,8 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   const nameQueryRef = useRef('');
   const [estimatingName, setEstimatingName] = useState(false);
 
-  // 複数料理のまとめ推定の内訳（合計を calories/PFC にセットして1件保存）
-  const [breakdown, setBreakdown] = useState<MealComponent[] | null>(null);
+  // 複数料理ピッカーの対象テキスト（セット中はピッカーを表示）
+  const [multiText, setMultiText] = useState<string | null>(null);
 
   // ── バリデーションエラー ──────────────────────────────────────────────────────
   const [nameError, setNameError] = useState('');
@@ -116,7 +117,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     setShowFoodSearch(false); setFoodQuery(''); setFoodResults([]);
     setShowMyFoods(false); setBasis(null); setSavedMsg(null);
     setNameSuggestions([]); nameQueryRef.current = ''; setEstimatingName(false);
-    setNameError(''); setCalError(''); setBreakdown(null);
+    setNameError(''); setCalError(''); setMultiText(null);
   }
 
   function handleClose() { reset(); onClose(); }
@@ -154,7 +155,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
 
   // 栄養ソースを「基準量＋単位」として適用し、各入力欄へ反映する。
   function applyBasis(b: NutritionBasis) {
-    setBreakdown(null); // 単一ソース適用時は複数内訳をクリア
+    setMultiText(null); // 単一ソース適用時は複数内訳をクリア
     setBasis(b);
     const v = scaleNutrition(b);
     setCalories(String(v.kcal)); setCalError('');
@@ -283,7 +284,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
   function handleNameInput(v: string) {
     setName(v);
     if (v.trim()) setNameError('');
-    setBreakdown(null); // 入力変更で前回の内訳をクリア
+    setMultiText(null); // 入力変更で前回の内訳をクリア
     updateNameSuggestions(v);
   }
 
@@ -320,100 +321,53 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
     nameQueryRef.current = '';
   }
 
-  // 料理名テキストを1〜複数の料理として推定。
-  //   1件 → 分量スライダー付きで反映 / 複数 → 合計を1件にセットし内訳を表示。
+  // 料理名テキストから1品をAI推定（単一料理）。
   async function runAiEstimate() {
     const q = name.trim();
     if (q.length < 2) return;
     setEstimatingName(true);
     setSavedMsg(null);
     try {
-      const { items, total } = await estimateMealComponents(q);
-      if (items.length === 0) {
-        setSavedMsg('AIが推定できませんでした。手動で入力してください。');
-      } else if (items.length === 1) {
-        const it = items[0];
-        applyBasis({
-          name: it.name,
-          base: { kcal: it.kcal, p: it.protein, f: it.fat, c: it.carbs },
-          unit: 'serving',
-          unitLabel: it.serving ?? '1人前',
-          quantity: 1,
-          origin: it.source === 'db' ? 'db' : 'ai',
-        });
+      const result = await estimateMealByNameCached(q);
+      const b = basisFromAnalysis(result);
+      if (b) {
+        applyBasis(b);
       } else {
-        // 複数料理 → 合計を1件としてセットし、内訳を表示
-        setBasis(null);
-        setCalories(String(total.kcal)); setCalError('');
-        setProtein(total.protein != null ? String(total.protein) : '');
-        setFat(total.fat != null ? String(total.fat) : '');
-        setCarbs(total.carbs != null ? String(total.carbs) : '');
-        setShowPfc(total.protein != null || total.fat != null || total.carbs != null);
-        setBreakdown(items);
+        setSavedMsg('AIが推定できませんでした。手動で入力してください。');
       }
     } finally {
       setEstimatingName(false);
     }
   }
 
-  // 内訳から1品を除外 → 合計を再計算して反映。
-  function removeBreakdownItem(idx: number) {
-    setBreakdown((prev) => {
-      if (!prev) return prev;
-      const next = prev.filter((_, i) => i !== idx);
-      if (next.length === 0) {
-        setCalories(''); setProtein(''); setFat(''); setCarbs('');
-        return null;
-      }
-      const t = sumComponents(next);
-      setCalories(String(t.kcal));
-      setProtein(t.protein != null ? String(t.protein) : '');
-      setFat(t.fat != null ? String(t.fat) : '');
-      setCarbs(t.carbs != null ? String(t.carbs) : '');
-      return next;
-    });
-  }
-
-  // 内訳パネル（複数料理のとき表示）。
-  function renderBreakdown() {
-    if (!breakdown || breakdown.length === 0) return null;
-    return (
-      <div className="-mt-2 mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3">
-        <p className="text-xs font-bold text-blue-800 mb-1.5">🍱 内訳（合計 {calories || 0} kcal・1件として保存）</p>
-        <ul className="space-y-1">
-          {breakdown.map((c, i) => (
-            <li key={`${c.name}-${i}`} className="flex items-center justify-between gap-2 text-xs text-blue-900">
-              <span className="truncate">
-                {c.name}
-                {c.source === 'ai' && <span className="text-[9px] text-blue-400 ml-1">AI</span>}
-              </span>
-              <span className="flex items-center gap-2 flex-shrink-0">
-                <span className="tabular-nums">{c.kcal}kcal</span>
-                <button type="button" onClick={() => removeBreakdownItem(i)}
-                  className="text-blue-300 hover:text-red-400 leading-none" aria-label="除外">×</button>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
+  // 複数料理ピッカーの合計を、保存用の calories/PFC/名前へ反映（合計を1件として保存）。
+  const handleMultiChange = useCallback((t: MultiTotal) => {
+    setBasis(null);
+    setCalories(String(t.kcal)); setCalError('');
+    setProtein(t.protein != null ? String(t.protein) : '');
+    setFat(t.fat != null ? String(t.fat) : '');
+    setCarbs(t.carbs != null ? String(t.carbs) : '');
+    setShowPfc(t.protein != null || t.fat != null || t.carbs != null);
+    setName(t.names.join('、'));
+  }, []);
 
   function renderNameSuggestions() {
     const q = name.trim();
 
-    // 複数料理の入力（区切り or 語中の「と/や」）→ まとめてAI推定ボタンを優先表示
+    // 複数ピッカー表示中はサジェストを出さない
+    if (multiText) return null;
+
+    // 複数料理の入力（区切り or 語中の「と/や」）→ 「分けて入力」ボタンを表示
     const multiIntent = q.length >= 2 && (/[、,，・/／＋+&＆\n]/u.test(q) || /.+(と|や).+/u.test(q));
-    if (multiIntent && !breakdown) {
+    if (multiIntent) {
       return (
         <div className="-mt-2 mb-4">
           <button
             type="button"
-            onClick={runAiEstimate}
-            disabled={estimatingName}
-            className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-60"
+            onClick={() => setMultiText(name.trim())}
+            className="w-full py-2.5 border-2 border-dashed border-blue-300 rounded-xl text-sm font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
           >
-            {estimatingName ? '🤖 AIが推定中…' : '🍱 複数まとめてAI推定（合計1件で登録）'}
+            🍱 複数の料理を分けて入力（候補から選択）
           </button>
         </div>
       );
@@ -519,14 +473,16 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
             />
           </Field>
           {renderNameSuggestions()}
-          {renderBreakdown()}
+          {multiText && (
+            <MultiDishPicker initialText={multiText} myFoods={myFoods} onChange={handleMultiChange} />
+          )}
 
           <Field label="カロリー（kcal）" error={calError}>
             <input
               className={`input ${calError ? 'border-red-400 focus:border-red-400' : ''}`}
               type="number"
               value={calories}
-              onChange={(e) => { setCalories(e.target.value); setCalError(''); setBreakdown(null); }}
+              onChange={(e) => { setCalories(e.target.value); setCalError(''); setMultiText(null); }}
               placeholder="例: 380"
               min={0}
             />
@@ -820,7 +776,9 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
             />
           </Field>
           {renderNameSuggestions()}
-          {renderBreakdown()}
+          {multiText && (
+            <MultiDishPicker initialText={multiText} myFoods={myFoods} onChange={handleMultiChange} />
+          )}
 
           {/* ── 分量スライダー（栄養ソース反映後に表示） ── */}
           {basis && (
@@ -850,7 +808,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
               className={`input ${calError ? 'border-red-400 focus:border-red-400' : ''}`}
               type="number"
               value={calories}
-              onChange={(e) => { setCalories(e.target.value); setCalError(''); setBasis(null); setBreakdown(null); }}
+              onChange={(e) => { setCalories(e.target.value); setCalError(''); setBasis(null); setMultiText(null); }}
               placeholder="例: 380"
               min={0}
             />
@@ -917,7 +875,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
                     className="input text-center px-2"
                     type="number"
                     value={val}
-                    onChange={(e) => { set(e.target.value); setBasis(null); setBreakdown(null); }}
+                    onChange={(e) => { set(e.target.value); setBasis(null); setMultiText(null); }}
                     placeholder="0"
                     min={0}
                   />
