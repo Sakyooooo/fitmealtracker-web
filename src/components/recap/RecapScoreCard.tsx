@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { RecapData } from '@/lib/recap';
+import { todayString } from '@/lib/stats';
 
 const NUM = "'Outfit', sans-serif";
 const R = 78;
@@ -36,7 +37,7 @@ export default function RecapScoreCard({ data, active }: { data: RecapData; acti
         HEALTH SCORE
       </div>
       <div style={{ font: "700 23px 'Zen Maru Gothic'", color: '#3b3340', marginTop: 7 }}>
-        今日の健康スコア
+        {data.date === todayString() ? '今日の健康スコア' : 'この日の健康スコア'}
       </div>
 
       {/* ── リング ── */}

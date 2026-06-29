@@ -210,7 +210,7 @@ export function buildRecapData(
       note: e.note || undefined,
     }));
 
-  const streak = calcStreak(meals, exercises);
+  const streak = calcStreak(meals, exercises, date);
 
   return {
     date,

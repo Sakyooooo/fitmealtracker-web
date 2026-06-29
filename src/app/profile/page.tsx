@@ -24,7 +24,6 @@ import WeightChart from '@/components/weight/WeightChart';
 import WeightCard from '@/components/weight/WeightCard';
 import AddWeightModal from '@/components/weight/AddWeightModal';
 import CalendarView from '@/components/calendar/CalendarView';
-import DayDetailModal from '@/components/calendar/DayDetailModal';
 import AccountLinkCard from '@/components/profile/AccountLinkCard';
 import GoalPlannerModal from '@/components/profile/GoalPlannerModal';
 import Modal from '@/components/ui/Modal';
@@ -63,8 +62,8 @@ function ProfileInner() {
   const searchParams = useSearchParams();
   const { userId, friendCode, displayName, updateNickname } = useFriends();
 
-  const { meals, deleteMeal } = useMealData();
-  const { exercises, deleteExercise } = useExerciseData();
+  const { meals } = useMealData();
+  const { exercises } = useExerciseData();
   const { weights, addWeight, deleteWeight } = useWeightData();
   const { settings, updateSettings } = useSettings();
 
@@ -150,11 +149,16 @@ function ProfileInner() {
     }
   }
 
-  // ── 今日のふり返り（手動で開く） ───────────────────────────────────────────────
-  const [showRecap, setShowRecap] = useState(false);
-  const recapData = useMemo(
+  // ── ふり返り（トップの「今日のふり返り」＋カレンダーの日付タップで開く） ─────────────
+  // トップカードの表示には常に「今日」を使い、モーダルは recapDate の日付で開く。
+  const [recapDate, setRecapDate] = useState<string | null>(null);
+  const todayRecap = useMemo(
     () => buildRecapData(meals, exercises, settings, todayString()),
     [meals, exercises, settings],
+  );
+  const recapViewData = useMemo(
+    () => (recapDate ? buildRecapData(meals, exercises, settings, recapDate) : null),
+    [meals, exercises, settings, recapDate],
   );
 
   // ── stats ──────────────────────────────────────────────────────────────────────
@@ -183,7 +187,6 @@ function ProfileInner() {
   // ── calendar ────────────────────────────────────────────────────────────────────
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   function prevMonth() { if (month === 1) { setYear((y) => y - 1); setMonth(12); } else setMonth((m) => m - 1); }
   function nextMonth() { if (month === 12) { setYear((y) => y + 1); setMonth(1); } else setMonth((m) => m + 1); }
 
@@ -274,11 +277,11 @@ function ProfileInner() {
       </div>
 
       {/* ── 今日のふり返り ── */}
-      {recapData.records.length > 0 && (
+      {todayRecap.records.length > 0 && (
         <div className="px-4 mb-3">
           <button
             type="button"
-            onClick={() => setShowRecap(true)}
+            onClick={() => setRecapDate(todayString())}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-white text-left transition-transform active:scale-[0.99]"
             style={{ background: 'linear-gradient(135deg, #AB47BC, #7E2F94)' }}
           >
@@ -286,7 +289,7 @@ function ProfileInner() {
             <span className="flex-1 min-w-0">
               <span className="block text-sm font-black">今日のふり返りを見る</span>
               <span className="block text-[11px] font-bold text-white/70">
-                {recapData.summary.mealCount + recapData.summary.exerciseCount}件の記録 ・ スコア {recapData.score.total}
+                {todayRecap.summary.mealCount + todayRecap.summary.exerciseCount}件の記録 ・ スコア {todayRecap.score.total}
               </span>
             </span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -319,7 +322,7 @@ function ProfileInner() {
               <span className="text-base font-bold text-gray-700">{year}年 {month}月</span>
               <button type="button" onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm text-gray-600 hover:bg-gray-50 text-lg">›</button>
             </div>
-            <CalendarView meals={meals} exercises={exercises} year={year} month={month} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+            <CalendarView meals={meals} exercises={exercises} year={year} month={month} selectedDate={recapDate} onSelectDate={setRecapDate} />
             <div className="flex items-center gap-4 mt-3 px-1">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#4CAF50]" />
@@ -330,7 +333,7 @@ function ProfileInner() {
                 <span className="text-xs text-gray-400">消（消費kcal）</span>
               </div>
             </div>
-            <p className="text-[11px] text-gray-400 text-center mt-2">日付をタップすると、その日の食事・運動の詳細を確認できます</p>
+            <p className="text-[11px] text-gray-400 text-center mt-2">日付をタップすると、その日のふり返りを表示します</p>
           </>
         )}
 
@@ -522,19 +525,7 @@ function ProfileInner() {
         </div>
       </Modal>
 
-      {selectedDate && (
-        <DayDetailModal
-          open={true}
-          onClose={() => setSelectedDate(null)}
-          date={selectedDate}
-          meals={meals}
-          exercises={exercises}
-          onDeleteMeal={deleteMeal}
-          onDeleteExercise={deleteExercise}
-        />
-      )}
-
-      <DailyRecap open={showRecap} data={recapData} onClose={() => setShowRecap(false)} />
+      <DailyRecap open={recapDate !== null} data={recapViewData} onClose={() => setRecapDate(null)} />
     </div>
   );
 }

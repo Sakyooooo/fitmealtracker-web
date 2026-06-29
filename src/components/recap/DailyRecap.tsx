@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, type CSSProperties, type PointerEvent } from 'react';
 import { RecapData } from '@/lib/recap';
+import { todayString } from '@/lib/stats';
 import RecapRecordCard from './RecapRecordCard';
 import RecapScoreCard from './RecapScoreCard';
 
@@ -132,7 +133,7 @@ export default function DailyRecap({ open, data, onClose }: Props) {
       <div className="w-full flex items-start justify-between" style={{ maxWidth: 360 }}>
         <div>
           <div style={{ font: "500 12px 'Zen Maru Gothic'", color: 'rgba(255,255,255,.85)', letterSpacing: '.05em' }}>
-            今日のふり返り
+            {data.date === todayString() ? '今日のふり返り' : 'この日のふり返り'}
           </div>
           <div style={{ font: "700 18px 'Zen Maru Gothic'", color: '#fff', marginTop: 2 }}>
             {data.dateLabel}

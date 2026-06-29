@@ -59,13 +59,14 @@ export function getRecentDayStats(
   });
 }
 
-export function calcStreak(meals: MealEntry[], exercises: ExerciseEntry[]): number {
+export function calcStreak(meals: MealEntry[], exercises: ExerciseEntry[], asOf?: string): number {
   const recorded = new Set<string>();
   meals.forEach((m) => recorded.add(m.date));
   exercises.forEach((e) => recorded.add(e.date));
 
   let streak = 0;
-  const cursor = new Date();
+  // asOf 指定時はその日を起点に過去へ遡る（過去日の振り返り用）。未指定なら今日起点。
+  const cursor = asOf ? new Date(`${asOf}T00:00:00`) : new Date();
   if (!recorded.has(dateString(cursor))) {
     cursor.setDate(cursor.getDate() - 1);
   }
