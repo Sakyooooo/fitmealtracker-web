@@ -65,7 +65,6 @@ export default function DailyRecapAutoTrigger() {
       if (currentHHMM() === '00:00') tryShow(yesterdayJST());
     }, 60_000);
     return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealsReady, exReady]);
 
   return <DailyRecap open={open} data={data} onClose={() => setOpen(false)} />;

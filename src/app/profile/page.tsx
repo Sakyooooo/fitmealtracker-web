@@ -26,6 +26,7 @@ import AddWeightModal from '@/components/weight/AddWeightModal';
 import CalendarView from '@/components/calendar/CalendarView';
 import DayDetailModal from '@/components/calendar/DayDetailModal';
 import AccountLinkCard from '@/components/profile/AccountLinkCard';
+import GoalPlannerModal from '@/components/profile/GoalPlannerModal';
 import Modal from '@/components/ui/Modal';
 import DailyRecap from '@/components/recap/DailyRecap';
 import { buildRecapData } from '@/lib/recap';
@@ -185,6 +186,9 @@ function ProfileInner() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   function prevMonth() { if (month === 1) { setYear((y) => y - 1); setMonth(12); } else setMonth((m) => m - 1); }
   function nextMonth() { if (month === 12) { setYear((y) => y + 1); setMonth(1); } else setMonth((m) => m + 1); }
+
+  // ── Goal planner modal（目標から自動計算） ────────────────────────────────────────
+  const [showGoalPlanner, setShowGoalPlanner] = useState(false);
 
   // ── PFC target modal ────────────────────────────────────────────────────────────
   const [showPfcModal, setShowPfcModal] = useState(false);
@@ -361,10 +365,28 @@ function ProfileInner() {
             </div>
 
             <p className="text-xs font-black text-gray-400 tracking-widest uppercase mb-2">Goals</p>
+            <button
+              type="button"
+              onClick={() => setShowGoalPlanner(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-white text-left transition-transform active:scale-[0.99] mb-3"
+              style={{ background: 'linear-gradient(135deg, #AB47BC, #7E2F94)' }}
+            >
+              <span className="text-2xl">🎯</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-black">目標から自動で計算</span>
+                <span className="block text-[11px] font-bold text-white/70">
+                  体格と目標から摂取・消費カロリーとPFCを設定
+                </span>
+              </span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
             <div className="rounded-2xl border border-gray-100 overflow-hidden">
               <InfoRow label="現在の体重" value={latestWeight != null ? `${latestWeight} kg` : '未記録'} />
               <InfoRow label="目標体重" value={settings.targetWeightKg != null ? `${settings.targetWeightKg} kg` : '未設定'} />
-              <InfoRow label="目標摂取カロリー" value={settings.targetIntakeCalories != null ? `${settings.targetIntakeCalories} kcal` : '未設定'} last />
+              <InfoRow label="目標摂取カロリー" value={settings.targetIntakeCalories != null ? `${settings.targetIntakeCalories} kcal` : '未設定'} />
+              <InfoRow label="目標消費カロリー" value={settings.targetBurnedCalories != null ? `${settings.targetBurnedCalories} kcal` : '未設定'} last />
             </div>
 
             <div className="mt-5">
@@ -455,6 +477,14 @@ function ProfileInner() {
       <NicknameModal open={showNickname} onClose={() => setShowNickname(false)} current={displayName} onSave={updateNickname} />
 
       <AddWeightModal open={showAddWeight} onClose={() => setShowAddWeight(false)} onSave={(data) => addWeight(data)} />
+
+      <GoalPlannerModal
+        open={showGoalPlanner}
+        onClose={() => setShowGoalPlanner(false)}
+        settings={settings}
+        currentWeight={latestWeight}
+        onApply={(patch) => updateSettings(patch)}
+      />
 
       <Modal open={showWeightSettings} onClose={() => setShowWeightSettings(false)} title="体重の設定">
         <div className="space-y-4">

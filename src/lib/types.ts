@@ -37,6 +37,9 @@ export type WeightEntry = {
 
 export type GymGoalType = 'calories' | 'time';
 
+export type Sex = 'male' | 'female';
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active';
+
 export type AppSettings = {
   targetWeightKg?: number;
   targetIntakeCalories?: number;
@@ -49,6 +52,11 @@ export type AppSettings = {
   gymGoalValue?: number;
   location?: string;        // 例: "東京・日本"
   avatarUrl?: string;       // プロフィール画像（リサイズ済み data URL）
+  // ── 目標自動計算（GoalPlanner）用のプロフィール ──
+  sex?: Sex;
+  birthYear?: number;       // 年齢入力 → 西暦で保存（再計算時も陳腐化しない）
+  activityLevel?: ActivityLevel;
+  goalTargetDate?: string;  // "YYYY-MM-DD" 目標期日（残日数の算出と表示に使用）
 };
 
 export type MealAnalysisResult = {
