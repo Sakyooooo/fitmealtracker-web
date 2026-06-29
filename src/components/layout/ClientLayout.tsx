@@ -2,6 +2,8 @@ import Navigation from './Navigation';
 import OnboardingModal from '@/components/onboarding/OnboardingModal';
 import MigrationBanner from '@/components/migration/MigrationBanner';
 import StoragePersistence from './StoragePersistence';
+import DailyRecapAutoTrigger from '@/components/recap/DailyRecapAutoTrigger';
+import MealReminderScheduler from '@/components/notification/MealReminderScheduler';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -13,6 +15,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       <OnboardingModal />
       <MigrationBanner />
       <StoragePersistence />
+      <DailyRecapAutoTrigger />
+      <MealReminderScheduler />
     </>
   );
 }
