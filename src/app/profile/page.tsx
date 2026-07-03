@@ -24,6 +24,7 @@ import WeightChart from '@/components/weight/WeightChart';
 import WeightCard from '@/components/weight/WeightCard';
 import AddWeightModal from '@/components/weight/AddWeightModal';
 import CalendarView from '@/components/calendar/CalendarView';
+import RecipeTab from '@/components/recipe/RecipeTab';
 import AccountLinkCard from '@/components/profile/AccountLinkCard';
 import GoalPlannerModal from '@/components/profile/GoalPlannerModal';
 import Modal from '@/components/ui/Modal';
@@ -42,12 +43,13 @@ const DEFAULT_TARGET_PROTEIN = 60;
 const DEFAULT_TARGET_FAT = 60;
 const DEFAULT_TARGET_CARBS = 260;
 
-type Seg = 'calendar' | 'overview' | 'stats' | 'weight';
+type Seg = 'calendar' | 'overview' | 'stats' | 'weight' | 'recipes';
 const SEGMENTS: { id: Seg; label: string }[] = [
   { id: 'calendar', label: 'カレンダー' },
   { id: 'overview', label: '概要' },
   { id: 'stats',    label: '統計' },
   { id: 'weight',   label: '体重' },
+  { id: 'recipes',  label: 'レシピ' },
 ];
 
 export default function ProfilePage() {
@@ -62,7 +64,7 @@ function ProfileInner() {
   const searchParams = useSearchParams();
   const { userId, friendCode, displayName, updateNickname } = useFriends();
 
-  const { meals } = useMealData();
+  const { meals, addMeal } = useMealData();
   const { exercises } = useExerciseData();
   const { weights, addWeight, deleteWeight } = useWeightData();
   const { settings, updateSettings } = useSettings();
@@ -474,6 +476,9 @@ function ProfileInner() {
             </div>
           </>
         )}
+
+        {/* ── レシピ ── */}
+        {seg === 'recipes' && <RecipeTab addMeal={addMeal} />}
       </div>
 
       {/* ── モーダル ── */}

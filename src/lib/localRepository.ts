@@ -8,6 +8,7 @@ import {
   MealEntry,
   MyFood,
   ProductLookupResult,
+  Recipe,
   WeightEntry,
 } from './types';
 
@@ -18,6 +19,7 @@ const KEYS = {
   settings: 'fmt_settings',
   gymSessions: 'fmt_gym_sessions',
   myFoods: 'fmt_my_foods',
+  recipes: 'fmt_recipes',
   offCache: 'fmt_off_cache',
 } as const;
 
@@ -239,6 +241,35 @@ export function findMyFoodByBarcode(barcode: string): MyFood | null {
 }
 
 export function newMyFoodId(): string {
+  return generateId();
+}
+
+// ── レシピ（ローカル保存。Supabase 同期は useRecipes 側で実施） ────────────────
+export function fetchRecipesLocal(): Recipe[] {
+  return load<Recipe[]>(KEYS.recipes, []);
+}
+
+export function saveRecipesLocal(recipes: Recipe[]): void {
+  save(KEYS.recipes, recipes);
+}
+
+export function upsertRecipeLocal(recipe: Recipe): Recipe[] {
+  const recipes = fetchRecipesLocal();
+  const idx = recipes.findIndex((r) => r.id === recipe.id);
+  const next = idx >= 0
+    ? recipes.map((r) => (r.id === recipe.id ? recipe : r))
+    : [recipe, ...recipes];
+  save(KEYS.recipes, next);
+  return next;
+}
+
+export function deleteRecipeLocal(id: string): Recipe[] {
+  const next = fetchRecipesLocal().filter((r) => r.id !== id);
+  save(KEYS.recipes, next);
+  return next;
+}
+
+export function newRecipeId(): string {
   return generateId();
 }
 

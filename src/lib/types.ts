@@ -116,6 +116,30 @@ export type MyFood = {
   updatedAt: string;
 };
 
+/** レシピの材料1件。amount は動画・原文の表記をそのまま保持（例: "200g", "大さじ2"）。 */
+export type RecipeIngredient = { name: string; amount: string | null };
+
+/** レシピの登録元。manual=手入力 / youtube=動画解析 / text=レシピ文の貼り付け */
+export type RecipeSource = 'manual' | 'youtube' | 'text';
+
+/** ストックしたレシピ。栄養値は1人前あたりに正規化して保存する。 */
+export type Recipe = {
+  id: string;
+  name: string;
+  servings: number;                 // このレシピが何人前ぶんか
+  ingredients: RecipeIngredient[];
+  steps: string[];
+  calories: number | null;          // 1人前あたり kcal
+  protein: number | null;          // g
+  fat: number | null;              // g
+  carbs: number | null;            // g
+  sourceType: RecipeSource;
+  sourceUrl?: string | null;        // YouTube URL（youtube時のみ）
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** 分量スライダーが駆動する栄養の基準量。表示値 = base × (unit==='100g' ? quantity/100 : quantity)。 */
 export type NutritionBasis = {
   name: string;

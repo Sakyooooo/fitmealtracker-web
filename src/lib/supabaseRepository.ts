@@ -4,7 +4,7 @@
  */
 
 import { supabase, supabaseEnabled } from './supabase';
-import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, TimelineItem, Reaction, Comment, WeightEntry, GymSession, WorkoutSet } from './types';
+import { MealEntry, ExerciseEntry, MyFood, ReactionEmoji, Recipe, RecipeIngredient, TimelineItem, Reaction, Comment, WeightEntry, GymSession, WorkoutSet } from './types';
 import { ensureAuthUserId } from './identity';
 import { bulkImportMeals, bulkImportExercises, bulkImportWeights, bulkImportMyFoods } from './localRepository';
 
@@ -204,6 +204,86 @@ export async function sbFetchMyFoods(): Promise<MyFood[] | null> {
     .order('updated_at', { ascending: false });
   if (error) { noteMyFoodsError(error.message); return null; }
   return (data ?? []).map((r) => fromSupaMyFood(r as Record<string, unknown>));
+}
+
+// ── Recipes（レシピの端末間同期） ─────────────────────────────────────────────
+
+// 010_recipes.sql 未適用の環境ではテーブルが無い。最初の失敗で同期を停止し、
+// ローカル保存のみで動作させる（コンソールのエラー連発を防ぐ）。
+let recipesUnavailable = false;
+function noteRecipesError(msg: string): void {
+  if (msg.includes('Could not find the table') || msg.includes('recipes')) {
+    if (!recipesUnavailable) {
+      console.warn('[recipes] テーブル未作成のため同期を無効化します（supabase/migrations/010_recipes.sql を実行すると有効化）');
+    }
+    recipesUnavailable = true;
+  } else {
+    console.error('[supabaseRepository] recipes:', msg);
+  }
+}
+
+function toSupaRecipe(r: Recipe, userId: string) {
+  return {
+    id:          r.id,
+    user_id:     userId,
+    name:        r.name,
+    servings:    r.servings,
+    ingredients: r.ingredients,
+    steps:       r.steps,
+    calories:    r.calories ?? null,
+    protein:     r.protein ?? null,
+    fat:         r.fat ?? null,
+    carbs:       r.carbs ?? null,
+    source_type: r.sourceType,
+    source_url:  r.sourceUrl ?? null,
+    note:        r.note ?? null,
+    created_at:  r.createdAt,
+    updated_at:  r.updatedAt,
+  };
+}
+
+function fromSupaRecipe(r: Record<string, unknown>): Recipe {
+  return {
+    id:          r.id as string,
+    name:        r.name as string,
+    servings:    Number(r.servings) || 1,
+    ingredients: Array.isArray(r.ingredients) ? (r.ingredients as RecipeIngredient[]) : [],
+    steps:       Array.isArray(r.steps) ? (r.steps as string[]) : [],
+    calories:    r.calories == null ? null : Number(r.calories),
+    protein:     r.protein == null ? null : Number(r.protein),
+    fat:         r.fat == null ? null : Number(r.fat),
+    carbs:       r.carbs == null ? null : Number(r.carbs),
+    sourceType:  (r.source_type as Recipe['sourceType']) ?? 'manual',
+    sourceUrl:   (r.source_url as string | null) ?? null,
+    note:        (r.note as string | null) ?? null,
+    createdAt:   (r.created_at as string) ?? new Date().toISOString(),
+    updatedAt:   (r.updated_at as string) ?? new Date().toISOString(),
+  };
+}
+
+export async function sbUpsertRecipe(recipe: Recipe): Promise<void> {
+  if (!supabaseEnabled || !supabase || recipesUnavailable) return;
+  const userId = await ensureAuthUserId();
+  const { error } = await supabase.from('recipes').upsert(toSupaRecipe(recipe, userId));
+  if (error) noteRecipesError(error.message);
+}
+
+export async function sbDeleteRecipe(id: string): Promise<void> {
+  if (!supabaseEnabled || !supabase || recipesUnavailable) return;
+  const { error } = await supabase.from('recipes').delete().eq('id', id);
+  if (error) noteRecipesError(error.message);
+}
+
+export async function sbFetchRecipes(): Promise<Recipe[] | null> {
+  if (!supabaseEnabled || !supabase || recipesUnavailable) return null;
+  const userId = await ensureAuthUserId();
+  const { data, error } = await supabase
+    .from('recipes')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+  if (error) { noteRecipesError(error.message); return null; }
+  return (data ?? []).map((r) => fromSupaRecipe(r as Record<string, unknown>));
 }
 
 // ── クラウド復元（端末をまたいで自分の記録をローカルへ取り込む） ────────────────
