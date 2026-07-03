@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { GEMINI_ENDPOINT, GEMINI_FALLBACK, extractJson } from '@/lib/gemini';
+import { GEMINI_FALLBACK, extractJson } from '@/lib/gemini';
+import { callGeminiWithFallback } from '@/lib/geminiServer';
 import { MealAnalysisResult } from '@/lib/types';
 import { applyNutritionDb, lookupNutrition } from '@/lib/nutritionDb';
 import { isAllowedRequestOrigin } from '@/lib/apiOrigin';
@@ -262,7 +263,7 @@ export async function POST(request: Request) {
   //  - 同一モデルで短い指数バックオフ付きリトライ
   //  - それでもダメなら flash-lite にフォールバック
   // のどちらかで一時的なエラーを吸収し「そもそも出ない」を減らす。
-  const data = await callGeminiWithFallback(apiKey, body);
+  const data = await callGeminiWithFallback(apiKey, body, 'gemini');
   if (!data) return NextResponse.json(GEMINI_FALLBACK);
 
   const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -280,49 +281,4 @@ export async function POST(request: Request) {
   // テキスト推定では候補での誤マッチを避けるため入力名のみで照合する。
   const final = applyNutritionDb(normalized, parsed?.portion, { matchCandidates: !isTextMode });
   return NextResponse.json(final);
-}
-
-// ── Gemini 呼び出し（リトライ＋フォールバック） ───────────────────────────────
-// ユーザー設定: メイン=gemini-3.1-flash-lite（gemini.ts）、
-// フォールバックは別系の gemini-2.5-flash-lite（モデル障害時の退避先）。
-const GEMINI_FALLBACK_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
-const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function callGeminiWithFallback(
-  apiKey: string,
-  body: unknown,
-): Promise<{ candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> } | null> {
-  // 第一候補は高精度な flash、ダメなら軽量な flash-lite。
-  const endpoints = [GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT];
-
-  for (const endpoint of endpoints) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await fetch(`${endpoint}?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-
-        if (res.ok) return await res.json();
-
-        const status = res.status;
-        if (!RETRYABLE_STATUS.has(status)) {
-          // 4xx（スキーマ不正・認証など）はリトライしても無駄なので次モデルへ
-          const detail = (await res.text().catch(() => '')).slice(0, 200);
-          console.error('[gemini] non-retryable HTTP', status, detail);
-          break;
-        }
-        // リトライ可能エラー: 指数バックオフ＋ジッター
-        console.warn('[gemini] retryable HTTP', status, `endpoint=${endpoint} attempt=${attempt}`);
-        await sleep(400 * (attempt + 1) + Math.floor(Math.random() * 300));
-      } catch (error) {
-        console.error('[gemini] fetch error', error);
-        await sleep(300);
-      }
-    }
-  }
-  return null;
 }

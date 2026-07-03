@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { GEMINI_ENDPOINT, extractJson } from '@/lib/gemini';
+import { extractJson } from '@/lib/gemini';
+import { callGeminiWithFallback } from '@/lib/geminiServer';
 import { extractYouTubeVideoId, normalizeRecipeAnalysis } from '@/lib/recipe';
 import { isAllowedRequestOrigin } from '@/lib/apiOrigin';
 
@@ -171,7 +172,7 @@ export async function POST(request: Request) {
     },
   };
 
-  const data = await callGeminiWithFallback(apiKey, body);
+  const data = await callGeminiWithFallback(apiKey, body, 'analyze-recipe');
   if (!data) {
     return NextResponse.json({ error: 'AI解析に失敗しました。時間をおいて再度お試しください。' }, { status: 502 });
   }
@@ -182,44 +183,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(normalizeRecipeAnalysis(extractJson(text)));
-}
-
-// ── Gemini 呼び出し（リトライ＋フォールバック / analyze-meal と同パターン） ──
-const GEMINI_FALLBACK_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
-const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function callGeminiWithFallback(
-  apiKey: string,
-  body: unknown,
-): Promise<{ candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> } | null> {
-  const endpoints = [GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT];
-
-  for (const endpoint of endpoints) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await fetch(`${endpoint}?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-
-        if (res.ok) return await res.json();
-
-        const status = res.status;
-        if (!RETRYABLE_STATUS.has(status)) {
-          const detail = (await res.text().catch(() => '')).slice(0, 200);
-          console.error('[analyze-recipe] non-retryable HTTP', status, detail);
-          break;
-        }
-        console.warn('[analyze-recipe] retryable HTTP', status, `endpoint=${endpoint} attempt=${attempt}`);
-        await sleep(400 * (attempt + 1) + Math.floor(Math.random() * 300));
-      } catch (error) {
-        console.error('[analyze-recipe] fetch error', error);
-        await sleep(300);
-      }
-    }
-  }
-  return null;
 }

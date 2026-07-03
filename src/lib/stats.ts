@@ -78,10 +78,6 @@ export function calcStreak(meals: MealEntry[], exercises: ExerciseEntry[], asOf?
   return streak;
 }
 
-export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
 export function calcBMI(weightKg: number, heightCm: number): number {
   const hm = heightCm / 100;
   return Math.round((weightKg / (hm * hm)) * 10) / 10;

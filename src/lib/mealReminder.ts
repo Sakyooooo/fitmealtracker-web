@@ -5,6 +5,7 @@ const ENABLED_KEY = 'fmt_meal_notifications_enabled';
 const SW_CACHE = 'fmt-sw-settings-v1';
 const SW_ENABLED_KEY = '/fmt-notif-enabled';
 const SW_SLOTS_KEY = '/fmt-notif-slots';
+const SW_CONFIG_KEY = '/fmt-notif-config'; // リマインダー時刻の設定（SWへの配信用）
 
 export type ReminderSlot = {
   time: string;       // "HH:MM"
@@ -12,6 +13,9 @@ export type ReminderSlot = {
   label: string;
 };
 
+// リマインダー時刻の唯一の定義。
+// SW(public/sw.js)はこれを Cache API 経由で受け取るため（syncSlotsToSw）、
+// 時刻を変えるときはここだけを直せばよい（sw.js 側はフォールバック既定値のみ持つ）。
 export const REMINDER_SLOTS: ReminderSlot[] = [
   { time: '07:00', category: '朝食', label: '朝食の時間です' },
   { time: '12:00', category: '昼食', label: '昼食の時間です' },
@@ -25,6 +29,8 @@ export async function registerMealReminderSW(): Promise<void> {
   if (!('serviceWorker' in navigator)) return;
   try {
     const reg = await navigator.serviceWorker.register('/sw.js');
+    // リマインダー時刻を SW へ配信（背景通知が REMINDER_SLOTS を参照できるように）
+    await syncSlotsToSw();
     // Periodic Background Sync（対応ブラウザのみ）
     if ('periodicSync' in reg) {
       const status = await navigator.permissions.query({
@@ -48,6 +54,11 @@ async function swCachePut(key: string, value: string): Promise<void> {
     const c = await caches.open(SW_CACHE);
     await c.put(key, new Response(value));
   } catch { /* ignore */ }
+}
+
+/** リマインダー時刻(REMINDER_SLOTS)を Cache API に書き、SWの背景通知へ配信する。 */
+async function syncSlotsToSw(): Promise<void> {
+  await swCachePut(SW_CONFIG_KEY, JSON.stringify(REMINDER_SLOTS));
 }
 
 async function getSwNotifiedSlots(): Promise<string[]> {
@@ -83,6 +94,8 @@ export async function setNotificationsEnabled(v: boolean): Promise<void> {
   localStorage.setItem(ENABLED_KEY, v ? 'true' : 'false');
   // SW 側の Cache にも書き込む
   await swCachePut(SW_ENABLED_KEY, v ? 'true' : 'false');
+  // 有効化時は最新のリマインダー時刻も配信しておく
+  if (v) await syncSlotsToSw();
   // SW に通知
   if ('serviceWorker' in navigator) {
     const reg = await navigator.serviceWorker.getRegistration('/sw.js');

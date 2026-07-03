@@ -1,21 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { AppSettings } from '@/lib/types';
-import { loadSettings, saveSettings } from '@/lib/localRepository';
+import { useAppDataContext } from '@/store/AppDataProvider';
 
+/** アプリ設定へのアクセス。実体は AppDataProvider の単一ストア。 */
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(() =>
-    typeof window !== 'undefined' ? loadSettings() : {},
-  );
-
-  const updateSettings = useCallback((patch: Partial<AppSettings>) => {
-    setSettings((prev) => {
-      const next = { ...prev, ...patch };
-      saveSettings(next);
-      return next;
-    });
-  }, []);
-
+  const { settings, updateSettings } = useAppDataContext();
   return { settings, updateSettings };
 }

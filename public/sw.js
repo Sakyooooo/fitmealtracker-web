@@ -2,13 +2,28 @@
 const CACHE = 'fmt-sw-settings-v1';
 const ENABLED_KEY = '/fmt-notif-enabled';
 const SLOTS_KEY = '/fmt-notif-slots';
+const CONFIG_KEY = '/fmt-notif-config'; // メインスレッドが配信するリマインダー時刻
 const PERIODIC_TAG = 'meal-reminder';
 
-const REMINDER_SLOTS = [
+// フォールバック既定値のみ。実行時の時刻は Cache(CONFIG_KEY) から読む
+// （唯一の定義は src/lib/mealReminder.ts の REMINDER_SLOTS。ここは配信前の保険）。
+const DEFAULT_SLOTS = [
   { time: '07:00', category: '朝食', label: '朝食の時間です' },
   { time: '12:00', category: '昼食', label: '昼食の時間です' },
   { time: '18:00', category: '夕食', label: '夕食の時間です' },
 ];
+
+async function getReminderSlots() {
+  try {
+    const c = await getCache();
+    const res = await c.match(CONFIG_KEY);
+    if (!res) return DEFAULT_SLOTS;
+    const slots = await res.json();
+    return Array.isArray(slots) && slots.length > 0 ? slots : DEFAULT_SLOTS;
+  } catch {
+    return DEFAULT_SLOTS;
+  }
+}
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
@@ -102,8 +117,9 @@ async function checkAndNotify() {
 
   const hhmm = currentHHMM();
   const notified = await getNotifiedSlots();
+  const slots = await getReminderSlots();
 
-  for (const slot of REMINDER_SLOTS) {
+  for (const slot of slots) {
     // タブ経由（CHECK_REMINDER）は完全一致、periodic sync は ±5 分ウィンドウ
     const matches = slot.time === hhmm || isNearSlot(slot.time);
     if (!matches) continue;
