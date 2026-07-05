@@ -19,6 +19,8 @@ type UseTimelineReturn = {
   react: (item: TimelineItem, emoji: ReactionEmoji) => Promise<void>;
   addComment: (item: TimelineItem, body: string, author: CommentAuthor) => Promise<void>;
   deleteComment: (item: TimelineItem, commentId: string) => Promise<void>;
+  /** 食事シェア後、その投稿を「シェア済み」表示にする（楽観的更新） */
+  markShared: (itemId: string) => void;
 };
 
 export function useTimeline(): UseTimelineReturn {
@@ -116,5 +118,11 @@ export function useTimeline(): UseTimelineReturn {
     await sbDeleteComment(commentId);
   }, []);
 
-  return { items, loading, error, load, react, addComment, deleteComment };
+  const markShared = useCallback((itemId: string) => {
+    setItems((prev) => prev.map((it) =>
+      it.id === itemId ? { ...it, alreadyShared: true } : it,
+    ));
+  }, []);
+
+  return { items, loading, error, load, react, addComment, deleteComment, markShared };
 }

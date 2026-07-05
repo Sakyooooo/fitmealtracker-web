@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useMealData } from '@/hooks/useMealData';
 import { useSettings } from '@/hooks/useSettings';
+import { useFriends } from '@/hooks/useFriends';
 import { getMealsByDate, sumCalories, todayString } from '@/lib/stats';
 import { MEAL_BG_URL, BG_OPACITY, HERO_FONT_SIZE } from '@/lib/constants';
 import { MealAnalysisResult } from '@/lib/types';
 import { analyzeWithGemini } from '@/lib/gemini';
 import MealCard from '@/components/meal/MealCard';
 import AddMealModal from '@/components/meal/AddMealModal';
+import type { TagFriend } from '@/components/meal/useMealForm';
 import Modal from '@/components/ui/Modal';
 
 function ProgressBar({ pct }: { pct: number }) {
@@ -27,8 +29,19 @@ function ProgressBar({ pct }: { pct: number }) {
 export default function MealPage() {
   const { meals, addMeal, deleteMeal, hydrated } = useMealData();
   const { settings, updateSettings } = useSettings();
+  const { friends } = useFriends();
   const [showModal, setShowModal] = useState(false);
   const [showList, setShowList] = useState(false);
+
+  // 食事に一緒に食べたフレンドをタグ付けする候補（承認済みフレンド）
+  const tagFriends = useMemo<TagFriend[]>(
+    () => friends.map((f) => ({
+      id: f.friend.id,
+      name: f.friend.display_name ?? f.friend.friend_code,
+      avatarUrl: f.friend.avatar_url ?? null,
+    })),
+    [friends],
+  );
 
   // ── Camera instant-analyze ────────────────────────────────────────────────────
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -328,6 +341,7 @@ export default function MealPage() {
           onSave={(data) => addMeal(data)}
           initialPhotoFile={cameraFile}
           initialAnalysis={cameraAnalysis}
+          friends={tagFriends}
         />
       </div>
     </div>

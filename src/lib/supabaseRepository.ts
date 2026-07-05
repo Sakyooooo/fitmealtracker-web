@@ -10,8 +10,16 @@ import { bulkImportMeals, bulkImportExercises, bulkImportWeights, bulkImportMyFo
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+// 011_meal_tags_share.sql 未適用の環境では tagged_user_ids / shared_from_meal_id 列が
+// 無い。最初の列エラーで共有関連フィールドの送受信のみを無効化し、食事本体の同期は
+// 従来どおり継続させる（列未作成でも既存機能が壊れないようにする）。
+let mealTagsUnavailable = false;
+function isMealTagsColumnError(msg: string): boolean {
+  return msg.includes('tagged_user_ids') || msg.includes('shared_from_meal_id');
+}
+
 function toSupaMeal(m: MealEntry, userId: string) {
-  return {
+  const base = {
     id:         m.id,
     user_id:    userId,
     name:       m.name,
@@ -25,6 +33,12 @@ function toSupaMeal(m: MealEntry, userId: string) {
     carbs:      m.carbs ?? null,
     photo_url:  m.photoUrl ?? null,
     is_public:  true,
+  };
+  if (mealTagsUnavailable) return base;
+  return {
+    ...base,
+    tagged_user_ids:     m.taggedUserIds ?? [],
+    shared_from_meal_id: m.sharedFromMealId ?? null,
   };
 }
 
@@ -64,7 +78,13 @@ function toSupaExercise(e: ExerciseEntry, userId: string) {
 export async function sbUpsertMeal(meal: MealEntry): Promise<void> {
   if (!supabaseEnabled || !supabase) return;
   const userId = await ensureAuthUserId();
-  const { error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId));
+  let { error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId));
+  // 共有列が未作成なら共有フィールドを外して1回だけリトライ（食事本体は保存する）
+  if (error && !mealTagsUnavailable && isMealTagsColumnError(error.message)) {
+    mealTagsUnavailable = true;
+    console.warn('[meals] tagged_user_ids/shared_from_meal_id 列が無いため食事シェア機能の同期を無効化します（supabase/migrations/011_meal_tags_share.sql を実行すると有効化）');
+    ({ error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId)));
+  }
   if (error) console.error('[supabaseRepository] upsertMeal:', error.message);
 }
 
@@ -94,6 +114,8 @@ export async function sbFetchMyMeals(): Promise<MealEntry[] | null> {
     protein:  r.protein as number | undefined,
     fat:      r.fat as number | undefined,
     carbs:    r.carbs as number | undefined,
+    taggedUserIds:    (r.tagged_user_ids as string[] | null) ?? undefined,
+    sharedFromMealId: (r.shared_from_meal_id as string | null) ?? undefined,
   }));
 }
 
@@ -485,15 +507,24 @@ export async function fetchTimeline(
   if (!supabaseEnabled || !supabase || friendIds.length === 0) return [];
 
   try {
-    // 食事
-    const { data: mealsData, error: mealsError } = await supabase
+    // 食事（共有列を含めて取得。列未作成なら共有情報なしでリトライ）
+    const baseMealCols = 'id, user_id, name, calories, category, date, time, note, protein, fat, carbs, photo_url, created_at, users(display_name, friend_code, avatar_url)';
+    const tagMealCols = `${baseMealCols}, tagged_user_ids, shared_from_meal_id`;
+    const mealsQuery = () => supabase!
       .from('meals')
-      .select('id, user_id, name, calories, category, date, note, protein, fat, carbs, photo_url, created_at, users(display_name, friend_code, avatar_url)')
+      .select(mealTagsUnavailable ? baseMealCols : tagMealCols)
       .in('user_id', friendIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(limit);
+    let { data: mealsData, error: mealsError } = await mealsQuery();
+    if (mealsError && !mealTagsUnavailable && isMealTagsColumnError(mealsError.message)) {
+      mealTagsUnavailable = true;
+      ({ data: mealsData, error: mealsError } = await mealsQuery());
+    }
     if (mealsError) console.error('[fetchTimeline] meals:', mealsError.message);
+    // 動的な select 文字列だと supabase-js の型パーサが列を推論できないため緩い型で扱う
+    const mealRows = (mealsData ?? []) as unknown as Record<string, unknown>[];
 
     // 運動
     const { data: exercisesData, error: exercisesError } = await supabase
@@ -507,7 +538,7 @@ export async function fetchTimeline(
 
     // 取得した全 record_id のリアクションを一括取得
     const allIds = [
-      ...(mealsData ?? []).map((m) => m.id as string),
+      ...mealRows.map((m) => m.id as string),
       ...(exercisesData ?? []).map((e) => e.id as string),
     ];
 
@@ -547,11 +578,27 @@ export async function fetchTimeline(
     const myReaction = (id: string): ReactionEmoji | null =>
       (reactions.find((r) => r.record_id === id && r.from_user_id === myUserId)?.emoji as ReactionEmoji) ?? null;
 
+    // 自分が既にシェア済みの食事（shared_from_meal_id が対象投稿を指す自分の記録）を特定
+    const mealIds = mealRows.map((m) => m.id as string);
+    let sharedSourceIds = new Set<string>();
+    if (!mealTagsUnavailable && mealIds.length > 0) {
+      const { data: sharedRows } = await supabase
+        .from('meals')
+        .select('shared_from_meal_id')
+        .eq('user_id', myUserId)
+        .in('shared_from_meal_id', mealIds);
+      sharedSourceIds = new Set(
+        (sharedRows ?? []).map((r) => r.shared_from_meal_id as string).filter(Boolean),
+      );
+    }
+
     // 食事アイテム
-    const mealItems: TimelineItem[] = (mealsData ?? []).map((m) => {
+    const mealItems: TimelineItem[] = mealRows.map((m) => {
       const user = (m.users as unknown) as { display_name: string | null; friend_code: string; avatar_url: string | null } | null;
+      const taggedIds = (m.tagged_user_ids as string[] | null) ?? [];
+      const id = m.id as string;
       return {
-        id:           m.id as string,
+        id,
         type:         'meal',
         user_id:      m.user_id as string,
         display_name: user?.display_name ?? null,
@@ -561,15 +608,18 @@ export async function fetchTimeline(
         calories:     m.calories as number,
         date:         m.date as string,
         category:     m.category as string,
+        time:         m.time as string | undefined,
         protein:      m.protein as number | null,
         fat:          m.fat as number | null,
         carbs:        m.carbs as number | null,
         photoUrl:     m.photo_url as string | null,
         note:         m.note as string | null,
         created_at:   m.created_at as string,
-        reactions:    reactionsFor(m.id as string),
-        my_reaction:  myReaction(m.id as string),
-        comments:     commentsFor(m.id as string),
+        reactions:    reactionsFor(id),
+        my_reaction:  myReaction(id),
+        comments:     commentsFor(id),
+        taggedMe:     taggedIds.includes(myUserId),
+        alreadyShared: sharedSourceIds.has(id),
       };
     });
 

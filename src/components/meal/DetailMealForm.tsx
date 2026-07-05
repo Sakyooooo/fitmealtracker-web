@@ -1,13 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { type MealForm, CATEGORIES } from './useMealForm';
+import { type MealForm, type TagFriend, CATEGORIES } from './useMealForm';
 import { Field, NameSuggestions, MultiPickerSlot, ORIGIN_LABEL } from './mealFormParts';
 
 const BarcodeScanner = dynamic(() => import('@/components/meal/BarcodeScanner'), { ssr: false });
 
 /** 詳細モード: 写真解析・バーコード・食品検索・マイ食品・分量・日時・PFC・メモ。 */
-export default function DetailMealForm({ form }: { form: MealForm }) {
+export default function DetailMealForm({ form, friends = [] }: { form: MealForm; friends?: TagFriend[] }) {
   return (
     <>
       <PhotoPanel form={form} />
@@ -76,6 +76,8 @@ export default function DetailMealForm({ form }: { form: MealForm }) {
 
       <PfcPanel form={form} />
 
+      <FriendTagPanel form={form} friends={friends} />
+
       <Field label="メモ（任意）">
         <textarea
           className="input resize-none"
@@ -94,6 +96,58 @@ export default function DetailMealForm({ form }: { form: MealForm }) {
         保存する
       </button>
     </>
+  );
+}
+
+// ── 一緒に食べたフレンドのタグ付け ────────────────────────────────────────────
+// タグ付けした相手のタイムラインには「自分の記録にシェア」ボタンが表示される。
+function FriendTagPanel({ form, friends }: { form: MealForm; friends: TagFriend[] }) {
+  const { taggedUserIds, setTaggedUserIds } = form;
+  if (friends.length === 0) return null;
+
+  const toggle = (id: string) =>
+    setTaggedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  return (
+    <Field label="一緒に食べたフレンド（任意）">
+      <p className="text-xs text-gray-400 mb-2 -mt-1">
+        タグ付けした相手は、この記録を自分の記録としてシェアできます。
+      </p>
+      <div className="flex gap-2 flex-wrap">
+        {friends.map((f) => {
+          const on = taggedUserIds.includes(f.id);
+          const initial = f.name.charAt(0).toUpperCase();
+          return (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => toggle(f.id)}
+              className={`flex items-center gap-1.5 pl-1.5 pr-3 py-1 rounded-full text-sm font-medium border-2 transition-colors ${
+                on
+                  ? 'bg-[#AB47BC] border-[#AB47BC] text-white'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <span
+                className="w-6 h-6 rounded-full flex items-center justify-center overflow-hidden text-[11px] font-black"
+                style={{ background: on ? 'rgba(255,255,255,0.25)' : '#F3E8FF', color: on ? '#fff' : '#AB47BC' }}
+              >
+                {f.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={f.avatarUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  initial
+                )}
+              </span>
+              {f.name}
+              {on && <span className="text-xs">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+    </Field>
   );
 }
 

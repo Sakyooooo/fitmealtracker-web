@@ -11,6 +11,8 @@ type Props = {
   onReact: (item: TimelineItem, emoji: ReactionEmoji) => void;
   onAddComment: (item: TimelineItem, body: string) => void;
   onDeleteComment: (item: TimelineItem, commentId: string) => void;
+  /** タグ付けされた食事を自分の記録としてシェアする */
+  onShare?: (item: TimelineItem) => void;
   /** 現在のユーザーID（自分のコメント削除の判定用） */
   meId: string;
   isMe?: boolean;
@@ -49,10 +51,12 @@ function Placeholder({ isMeal }: { isMeal: boolean }) {
   );
 }
 
-export default function TimelineCard({ item, onReact, onAddComment, onDeleteComment, meId, isMe }: Props) {
+export default function TimelineCard({ item, onReact, onAddComment, onDeleteComment, onShare, meId, isMe }: Props) {
   const name = isMe ? 'You' : (item.display_name ?? item.friend_code);
   const initial = name.charAt(0).toUpperCase();
   const isMeal = item.type === 'meal';
+  // 自分がタグ付けされた他人の食事投稿には「自分の記録にシェア」ボタンを出す
+  const canShare = isMeal && !isMe && !!item.taggedMe && !!onShare;
 
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(false);
@@ -167,6 +171,29 @@ export default function TimelineCard({ item, onReact, onAddComment, onDeleteComm
             {item.comments.length > 0 && <span className="tabular-nums">{item.comments.length}</span>}
           </button>
         </div>
+
+        {/* ── タグ付けされた食事：自分の記録にシェア ── */}
+        {canShare && (
+          <div className="mt-2.5 flex items-center gap-2 rounded-2xl bg-[#F3E8FF] px-3 py-2">
+            <span className="text-xs font-bold text-[#8E24AA] leading-snug flex-1">
+              📌 {name}さんがあなたをタグ付けしました
+            </span>
+            {item.alreadyShared ? (
+              <span className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-black text-[#8E24AA] bg-white/70 flex items-center gap-1">
+                ✓ シェア済み
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onShare?.(item)}
+                className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-black text-white transition-all active:scale-95"
+                style={{ background: ACCENT }}
+              >
+                自分の記録にシェア
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── コメント欄 ── */}
         {(showComments || item.comments.length > 0) && (

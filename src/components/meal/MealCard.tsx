@@ -19,10 +19,11 @@ export default function MealCard({ meal, onDelete }: Props) {
 
   return (
     <div className="flex items-center gap-3 bg-white rounded-xl px-4 py-3.5 shadow-sm border-l-[3px] border-[#4CAF50]">
-      {meal.photoUri && (
+      {/* ローカル写真(photoUri)優先。シェアで取り込んだ記録は元投稿の公開URL(photoUrl)を表示 */}
+      {(meal.photoUri || meal.photoUrl) && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={meal.photoUri}
+          src={meal.photoUri ?? meal.photoUrl ?? undefined}
           alt={meal.name}
           className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
         />

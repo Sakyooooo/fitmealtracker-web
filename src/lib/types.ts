@@ -14,6 +14,8 @@ export type MealEntry = {
   protein?: number;  // g
   fat?: number;      // g
   carbs?: number;    // g
+  taggedUserIds?: string[];      // 一緒に食べたフレンド（タイムラインでシェア可能に）
+  sharedFromMealId?: string | null; // シェアで作成した記録の場合、コピー元 meal.id
 };
 
 export type ExerciseType = 'normal' | 'gymSession';
@@ -219,10 +221,14 @@ export type TimelineItem = {
   date: string;
   // 食事のみ
   category?: string;
+  time?: string;            // "HH:MM"（シェアで自分の記録へコピーする際に使用）
   protein?: number | null;
   fat?: number | null;
   carbs?: number | null;
   photoUrl?: string | null; // 食事写真の公開URL
+  // 食事の共有（タグ付け）
+  taggedMe?: boolean;        // 自分がこの投稿にタグ付けされているか
+  alreadyShared?: boolean;   // 自分が既にこの投稿をシェア済みか
   // 運動のみ
   duration_minutes?: number;
   exercise_type?: string;

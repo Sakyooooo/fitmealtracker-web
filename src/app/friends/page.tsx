@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFriends } from '@/hooks/useFriends';
 import { useTimeline } from '@/hooks/useTimeline';
-import { ReactionEmoji, TimelineItem } from '@/lib/types';
+import { useMealData } from '@/hooks/useMealData';
+import { ReactionEmoji, TimelineItem, MealEntry } from '@/lib/types';
 import AddFriendModal from '@/components/friends/AddFriendModal';
 import NicknameModal from '@/components/friends/NicknameModal';
 import TimelineCard from '@/components/friends/TimelineCard';
@@ -80,7 +81,8 @@ export default function FriendsPage() {
     addFriend, removeFriend, updateNickname, clearError,
   } = useFriends();
 
-  const { items: timeline, loading: tlLoading, load: loadTimeline, react, addComment, deleteComment } = useTimeline();
+  const { items: timeline, loading: tlLoading, load: loadTimeline, react, addComment, deleteComment, markShared } = useTimeline();
+  const { addMeal } = useMealData();
 
   const [tab, setTab] = useState<'timeline' | 'globe'>('timeline');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null); // null = 全体
@@ -239,6 +241,25 @@ export default function FriendsPage() {
     }
     deleteComment(item, commentId);
   }, [deleteComment]);
+
+  // タグ付けされた食事を自分の記録としてシェア（元投稿の内容・日付・写真を引き継ぐ）
+  const handleShare = useCallback(async (item: TimelineItem) => {
+    if (item.type !== 'meal' || item.alreadyShared) return;
+    markShared(item.id); // 楽観的に「シェア済み」表示へ
+    await addMeal({
+      name: item.name,
+      calories: item.calories,
+      time: item.time ?? '12:00',
+      category: (item.category as MealEntry['category']) ?? '間食',
+      date: item.date,
+      note: item.note ?? undefined,
+      protein: item.protein ?? undefined,
+      fat: item.fat ?? undefined,
+      carbs: item.carbs ?? undefined,
+      photoUrl: item.photoUrl ?? undefined,
+      sharedFromMealId: item.id,
+    });
+  }, [addMeal, markShared]);
 
   // 像タップ: その人の記録をポップアップ表示（自分・フレンド共通）
   const handleSelectUser = useCallback((u: GlobeUser) => {
@@ -457,6 +478,7 @@ export default function FriendsPage() {
                       onReact={handleReact}
                       onAddComment={handleAddComment}
                       onDeleteComment={handleDeleteComment}
+                      onShare={handleShare}
                       meId={meId}
                       isMe={item.user_id === userId}
                     />

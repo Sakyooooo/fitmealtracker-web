@@ -202,10 +202,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (saved.photoUri) photoUrlsRef.current.push(saved.photoUri);
       setMeals((prev) => [saved, ...prev]);
       // Supabase に非同期で同期（写真があれば Storage にアップロードして photo_url を付与）
+      // シェアで作成した記録は File を持たず photoUrl（元投稿の公開URL）を引き継ぐ。
       (async () => {
-        let photoUrl: string | undefined;
+        let photoUrl: string | undefined = data.photoUrl ?? undefined;
         if (data.photoFile) {
-          photoUrl = (await sbUploadMealPhoto(saved.id, data.photoFile)) ?? undefined;
+          photoUrl = (await sbUploadMealPhoto(saved.id, data.photoFile)) ?? photoUrl;
         }
         await sbUpsertMeal({ ...saved, photoUrl });
       })().catch(console.error);

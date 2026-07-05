@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import { MealEntry, MealAnalysisResult } from '@/lib/types';
-import { useMealForm } from './useMealForm';
+import { useMealForm, type TagFriend } from './useMealForm';
 import QuickMealForm from './QuickMealForm';
 import DetailMealForm from './DetailMealForm';
 
@@ -17,9 +17,10 @@ type Props = {
   ) => void;
   initialPhotoFile?: File | null;
   initialAnalysis?: MealAnalysisResult | null;
+  friends?: TagFriend[];
 };
 
-export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, initialAnalysis }: Props) {
+export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, initialAnalysis, friends }: Props) {
   const [mode, setMode] = useState<Mode>('quick');
   const form = useMealForm({ open, onClose, onSave, initialPhotoFile, initialAnalysis });
 
@@ -51,7 +52,7 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
         ))}
       </div>
 
-      {mode === 'quick' ? <QuickMealForm form={form} /> : <DetailMealForm form={form} />}
+      {mode === 'quick' ? <QuickMealForm form={form} /> : <DetailMealForm form={form} friends={friends} />}
     </Modal>
   );
 }

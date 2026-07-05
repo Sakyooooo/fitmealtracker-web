@@ -58,6 +58,7 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
   const [showPfc, setShowPfc] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [taggedUserIds, setTaggedUserIds] = useState<string[]>([]); // 一緒に食べたフレンド
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeResult, setAnalyzeResult] = useState<MealAnalysisResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -95,7 +96,7 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
     setName(''); setCalories(''); setDate(todayString()); setTime(nowTime());
     setCategory('朝食'); setNote('');
     setProtein(''); setFat(''); setCarbs('');
-    setShowPfc(false); setPhotoFile(null);
+    setShowPfc(false); setPhotoFile(null); setTaggedUserIds([]);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null); setAnalyzeResult(null);
     setShowBarcode(false); setBarcodeInput(''); setProductResult(null);
@@ -354,6 +355,7 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
       protein: !isNaN(proteinVal) && proteinVal >= 0 ? proteinVal : undefined,
       fat: !isNaN(fatVal) && fatVal >= 0 ? fatVal : undefined,
       carbs: !isNaN(carbsVal) && carbsVal >= 0 ? carbsVal : undefined,
+      taggedUserIds: taggedUserIds.length > 0 ? taggedUserIds : undefined,
     });
     reset();
     onClose();
@@ -362,7 +364,7 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
   return {
     // state
     name, calories, date, time, category, note, protein, fat, carbs,
-    showPfc, photoPreview, analyzing, analyzeResult, fileRef,
+    showPfc, photoPreview, analyzing, analyzeResult, fileRef, taggedUserIds, setTaggedUserIds,
     showBarcode, barcodeInput, productLoading, productResult, productError, barcodeForRegister,
     myFoods, showFoodSearch, foodQuery, foodResults, showMyFoods, basis, savedMsg,
     nameSuggestions, estimatingName, multiText, nameError, calError,
@@ -378,3 +380,6 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
 }
 
 export type MealForm = ReturnType<typeof useMealForm>;
+
+/** タグ付け候補のフレンド（食事フォームに渡す最小情報） */
+export type TagFriend = { id: string; name: string; avatarUrl?: string | null };
