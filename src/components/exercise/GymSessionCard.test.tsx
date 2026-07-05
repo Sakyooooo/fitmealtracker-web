@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import GymSessionCard from './GymSessionCard';
 import { makeGymSession } from '@/test/factories';
 
+// jsdom には WebGL が無いため、3Dアバターステージはモックする
+vi.mock('./ExerciseAvatarStage', () => ({ default: () => null }));
+
 const baseProps = {
   session: null,
   todayBurned: 0,
@@ -13,6 +16,7 @@ const baseProps = {
   onCancel: vi.fn(),
   onMemoChange: vi.fn(),
   onSave: vi.fn(),
+  onAddExercise: vi.fn(),
   onAddManual: vi.fn(),
   onGoalSetting: vi.fn(),
 };

@@ -1,8 +1,45 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { GymSession, GymGoalType, WorkoutSet } from '@/lib/types';
+import dynamic from 'next/dynamic';
+import { ExerciseEntry, GymSession, GymGoalType, WorkoutSet } from '@/lib/types';
 import { GYM_BG_URL, BG_OPACITY, HERO_FONT_SIZE, TIMER_FONT_SIZE } from '@/lib/constants';
+import { GYM_PRESETS, estimateExerciseCalories } from '@/lib/activities';
+import { todayString } from '@/lib/stats';
+import type { ExerciseClip } from './ExerciseAvatarStage';
+
+// three.js を含むため遅延読み込み（セッション開始時にのみロード）
+const ExerciseAvatarStage = dynamic(() => import('./ExerciseAvatarStage'), { ssr: false, loading: () => null });
+
+/**
+ * 種目名 → アバターの実演クリップ。近い動きで代用（完全一致がない種目は待機）。
+ * クリップは public/models/exercise_avatar.glb（scripts/build_exercise_avatar_glb.py）と対応。
+ */
+const EXERCISE_CLIP: Record<string, ExerciseClip> = {
+  'スクワット': 'squat',
+  'レッグプレス': 'squat',
+  'ランジ': 'squat',
+  'デッドリフト': 'squat',
+  'ベンチプレス': 'pushup',
+  'ダンベルフライ': 'pushup',
+  'プランク': 'pushup',
+  'トライセップディップ': 'pushup',
+  '腕立て伏せ': 'pushup',
+  'クランチ': 'crunch',
+  '腹筋': 'situps',
+  'ランニング': 'run',
+  'ジョギング': 'run',
+  'ウォーキング': 'walk',
+};
+
+/** 種目ごとの計測状態（タップで開始、切替で前の種目を自動保存） */
+type ExerciseTiming = { name: string; startedAt: number };
+
+function fmtShort(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
 
 export type GymGoal = { type: GymGoalType; value: number };
 
@@ -16,6 +53,8 @@ interface Props {
   onCancel: () => void;
   onMemoChange: (memo: string) => void;
   onSave: (calories: number, sets: WorkoutSet[]) => void;
+  /** 種目タイマーで計測した1種目ぶんを ExerciseEntry として保存する */
+  onAddExercise: (data: Omit<ExerciseEntry, 'id'>) => void;
   onAddManual?: () => void;
   onGoalSetting?: () => void;
 }
@@ -49,7 +88,7 @@ function ProgressBar({ pct }: { pct: number }) {
 
 export default function GymSessionCard({
   session, todayBurned, todayMinutes, gymGoal,
-  onStart, onEnd, onCancel, onMemoChange, onSave, onAddManual, onGoalSetting,
+  onStart, onEnd, onCancel, onMemoChange, onSave, onAddExercise, onAddManual, onGoalSetting,
 }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [calories, setCalories] = useState('');
@@ -57,7 +96,67 @@ export default function GymSessionCard({
   const [workoutSets, setWorkoutSets] = useState<WorkoutSet[]>([]);
   const [newSet, setNewSet] = useState<WorkoutSet>({ name: '', weightKg: 0, sets: 3, reps: 10 });
   const [showSetForm, setShowSetForm] = useState(false);
+  const [demoClip, setDemoClip] = useState<ExerciseClip>('idle'); // アバターが実演中の種目
+  const [timing, setTiming] = useState<ExerciseTiming | null>(null); // 計測中の種目
+  const [exElapsed, setExElapsed] = useState(0);
+  const [performed, setPerformed] = useState<string[]>([]); // セッション中に行った種目名（完了画面の種目記録プリフィル用）
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const exIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── 種目タイマー（チップで開始・切替・完了。切替時は前の種目を自動保存） ──────
+  useEffect(() => {
+    if (timing) {
+      const t = timing;
+      setExElapsed(Math.floor((Date.now() - t.startedAt) / 1000));
+      exIntervalRef.current = setInterval(
+        () => setExElapsed(Math.floor((Date.now() - t.startedAt) / 1000)),
+        500,
+      );
+    } else {
+      if (exIntervalRef.current) clearInterval(exIntervalRef.current);
+      setExElapsed(0);
+    }
+    return () => { if (exIntervalRef.current) clearInterval(exIntervalRef.current); };
+  }, [timing]);
+
+  function saveTiming(t: ExerciseTiming) {
+    // eslint-disable-next-line react-hooks/purity
+    const durationMin = Math.max(1, Math.round((Date.now() - t.startedAt) / 60000));
+    onAddExercise({
+      name: t.name,
+      durationMinutes: durationMin,
+      caloriesBurned: estimateExerciseCalories(t.name, durationMin),
+      date: todayString(),
+      note: '',
+      type: 'gymSession',
+    });
+    setPerformed((prev) => (prev.includes(t.name) ? prev : [...prev, t.name]));
+  }
+
+  function handleExerciseTap(name: string) {
+    if (timing?.name === name) return; // 同じ種目は無視（終わるときは「完了」）
+    if (timing) saveTiming(timing);    // 前の種目を保存して切替
+    // eslint-disable-next-line react-hooks/purity
+    setTiming({ name, startedAt: Date.now() });
+    setDemoClip(EXERCISE_CLIP[name] ?? 'idle');
+  }
+
+  function handleExerciseDone() {
+    if (!timing) return;
+    saveTiming(timing);
+    setTiming(null);
+    setDemoClip('idle');
+  }
+
+  /** セッション終了。計測中の種目が残っていれば保存してから終える。 */
+  function handleEnd() {
+    if (timing) {
+      saveTiming(timing);
+      setTiming(null);
+      setDemoClip('idle');
+    }
+    onEnd();
+  }
 
   useEffect(() => {
     if (session?.status === 'active') {
@@ -222,27 +321,69 @@ export default function GymSessionCard({
             </div>
           )}
 
-          <div className="flex-1 flex flex-col items-center justify-center px-4">
+          <div className="flex-1 flex flex-col items-center px-4 min-h-0">
             <p
               className="font-black tabular-nums leading-none tracking-tighter text-gray-900"
-              style={{ fontSize: TIMER_FONT_SIZE }}
+              style={{ fontSize: 'clamp(40px, 12vw, 64px)' }}
             >
               {formatElapsed(elapsed)}
             </p>
-            <div className="w-44 h-[2px] bg-gray-900 mt-3 mb-3" />
-            <p className="text-sm font-bold tracking-[0.2em] text-gray-400">
+            <p className="text-xs font-bold tracking-[0.2em] text-gray-400 mt-1.5">
               {formatTime(session.startedAt)} START
             </p>
             {gymGoal && <ProgressBar pct={activePct} />}
+
+            {/* ── アバターステージ（計測中の種目を実演） ── */}
+            <div className="flex-1 w-full min-h-[250px] relative">
+              <ExerciseAvatarStage clip={demoClip} className="absolute inset-0" />
+
+              {/* 計測中バー（種目名・経過時間・完了） */}
+              {timing && (
+                <div className="absolute top-1 left-0 right-0 flex justify-center pointer-events-none">
+                  <div className="pointer-events-auto flex items-center gap-3 bg-gray-900/90 rounded-full pl-4 pr-1.5 py-1.5 shadow-lg">
+                    <span className="text-white font-black text-xs truncate max-w-[110px]">{timing.name}</span>
+                    <span className="text-white/90 font-black text-sm tabular-nums">{fmtShort(exElapsed)}</span>
+                    <button
+                      type="button"
+                      onClick={handleExerciseDone}
+                      className="px-3 py-1.5 bg-[#FF7043] text-white text-[11px] font-black rounded-full active:scale-95 transition-transform"
+                    >
+                      完了
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── 種目チップ（タップで計測開始。別の種目にタップすると前の種目を自動保存して切替） ── */}
+            <div className="w-full flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {GYM_PRESETS.map((name) => {
+                const active = timing?.name === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleExerciseTap(name)}
+                    className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold border transition-colors ${
+                      active
+                        ? 'bg-[#FF7043] border-[#FF7043] text-white shadow-sm'
+                        : 'bg-white/80 border-gray-200 text-gray-600 hover:border-[#FF7043] hover:text-[#FF7043]'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="flex flex-col items-center pb-6 gap-4">
+          <div className="flex flex-col items-center pb-6 pt-3 gap-4">
             <div className="flex items-center gap-8">
               <button type="button" onClick={onCancel}
                 className="w-14 h-14 rounded-full bg-white/80 border border-gray-200 flex items-center justify-center shadow-sm">
                 <span className="text-gray-500 font-bold text-xl">×</span>
               </button>
-              <button type="button" onClick={onEnd}
+              <button type="button" onClick={handleEnd}
                 className="w-28 h-28 rounded-full bg-gray-900 flex items-center justify-center shadow-xl active:scale-95 transition-transform">
                 <span className="text-white font-black text-lg tracking-wide">終了</span>
               </button>
@@ -297,6 +438,29 @@ export default function GymSessionCard({
           {/* 種目記録 */}
           <div className="w-full max-w-xs mx-auto mb-4">
             <p className="text-xs font-bold tracking-widest text-gray-400 mb-2">種目記録（任意）</p>
+
+            {/* セッション中に計測した種目 → タップで重量/回数の入力フォームへプリフィル */}
+            {performed.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[10px] font-bold text-gray-400 mb-1.5">セッション中の種目（タップで詳細を記録）</p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {performed.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        setNewSet({ name, weightKg: 0, sets: 3, reps: 10 });
+                        setShowSetForm(true);
+                      }}
+                      className="px-2.5 py-1.5 bg-white/80 border border-[#FF7043]/40 text-[#FF7043] text-[11px] font-bold rounded-full hover:bg-[#FFF3F0]"
+                    >
+                      ＋ {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {workoutSets.length > 0 && (
               <div className="space-y-1.5 mb-2">
                 {workoutSets.map((s, i) => (

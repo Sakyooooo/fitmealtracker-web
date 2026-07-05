@@ -7,7 +7,6 @@ import { GymGoalType } from '@/lib/types';
 import ExerciseCard from '@/components/exercise/ExerciseCard';
 import AddExerciseModal from '@/components/exercise/AddExerciseModal';
 import GymSessionCard, { GymGoal } from '@/components/exercise/GymSessionCard';
-import ExercisePicker from '@/components/exercise/ExercisePicker';
 import Modal from '@/components/ui/Modal';
 
 export default function ExercisePage() {
@@ -92,16 +91,10 @@ export default function ExercisePage() {
         onCancel={cancelGym}
         onMemoChange={updateGymMemo}
         onSave={saveGymAsExercise}
+        onAddExercise={(data) => addExercise(data)}
         onAddManual={() => setShowAddModal(true)}
         onGoalSetting={openGoalModal}
       />
-
-      {/* ── Exercise picker during active session ── */}
-      {isActive && (
-        <div className="px-4 pb-2">
-          <ExercisePicker onAdd={(data) => addExercise(data)} />
-        </div>
-      )}
 
       {/* ── Activity list toggle ── */}
       <div className="px-4 pb-2">
