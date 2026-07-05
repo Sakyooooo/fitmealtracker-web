@@ -52,7 +52,9 @@ export default function AddMealModal({ open, onClose, onSave, initialPhotoFile, 
         ))}
       </div>
 
-      {mode === 'quick' ? <QuickMealForm form={form} /> : <DetailMealForm form={form} friends={friends} />}
+      {mode === 'quick'
+        ? <QuickMealForm form={form} friends={friends} />
+        : <DetailMealForm form={form} friends={friends} />}
     </Modal>
   );
 }

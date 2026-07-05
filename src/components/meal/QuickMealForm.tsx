@@ -1,10 +1,10 @@
 'use client';
 
-import type { MealForm } from './useMealForm';
-import { Field, NameSuggestions, MultiPickerSlot } from './mealFormParts';
+import type { MealForm, TagFriend } from './useMealForm';
+import { Field, NameSuggestions, MultiPickerSlot, FriendTagPanel } from './mealFormParts';
 
 /** クイックモード: 食事名＋カロリーだけの最短入力。 */
-export default function QuickMealForm({ form }: { form: MealForm }) {
+export default function QuickMealForm({ form, friends = [] }: { form: MealForm; friends?: TagFriend[] }) {
   const { name, handleNameInput, nameError, calories, setCalories, setCalError, setMultiText, calError, handleSave } = form;
 
   return (
@@ -32,6 +32,8 @@ export default function QuickMealForm({ form }: { form: MealForm }) {
           min={0}
         />
       </Field>
+
+      <FriendTagPanel form={form} friends={friends} />
 
       <button
         type="button"
