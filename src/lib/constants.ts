@@ -21,3 +21,7 @@ export const STORAGE_KEY_USER_ID        = 'fmt_user_id';
 export const STORAGE_KEY_FRIEND_CODE    = 'fmt_friend_code';
 export const STORAGE_KEY_DISPLAY_NAME   = 'fmt_display_name';
 export const STORAGE_KEY_MIGRATION_DONE = 'fmt_migration_done';
+/** 'anonymous'=「新しく始める」選択済み / 'authed'=連携ログイン済み。未設定＝初回or消失後（復元ゲート表示） */
+export const STORAGE_KEY_IDENTITY_MODE  = 'fmt_identity_mode';
+/** 前回解決した identity（JSON: { uid, anonymous }）。uid変化の検知＝マージ同期の要否判定に使う */
+export const STORAGE_KEY_LAST_IDENTITY  = 'fmt_last_identity';

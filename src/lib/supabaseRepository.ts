@@ -344,10 +344,14 @@ export async function syncDownAllFromSupabase(): Promise<{
 let weightsUnavailable = false;
 let gymSessionsUnavailable = false;
 function noteSyncTableMissing(label: string, msg: string): boolean {
-  // テーブル未作成（PostgREST: PGRST205 / "Could not find the table"）か判定
-  const missing = msg.includes('Could not find the table') || msg.includes('does not exist');
+  // テーブル未作成（PostgREST: PGRST205 / "Could not find the table"）または
+  // 列未作成（"Could not find the 'x' column ... in the schema cache"）か判定。
+  // 後者を見逃すと同期が無効化されず、毎回同じエラーを出し続ける。
+  const missing = msg.includes('Could not find the table')
+    || msg.includes('does not exist')
+    || msg.includes('in the schema cache');
   if (missing) {
-    console.warn(`[${label}] テーブル未作成のため同期を無効化します（supabase/migrations/007_weights_gym_sessions.sql を実行すると有効化）`);
+    console.warn(`[${label}] テーブル/列が未作成のため同期を無効化します（supabase/migrations/007_weights_gym_sessions.sql を実行すると有効化）`);
   } else {
     console.error(`[supabaseRepository] ${label}:`, msg);
   }

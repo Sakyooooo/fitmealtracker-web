@@ -201,6 +201,31 @@ export function bulkImportMyFoods(foods: MyFood[]): void {
   save(KEYS.myFoods, [...toAdd, ...existing]);
 }
 
+/**
+ * アカウント引き継ぎ用: ローカル全記録のIDを再発行して保存し直し、新IDの配列を返す。
+ *
+ * 匿名アカウントから既存アカウントへ切り替える際、クラウドには旧IDの行が
+ * 旧uid所有のまま残っており、同じIDでのupsertはRLS（所有者のみ更新可）で失敗する。
+ * そこでIDを振り直し、新uidの行として改めてINSERTできるようにする。
+ * photoId（IndexedDBのキー）はレコードIDと独立しているため写真参照は壊れない。
+ */
+export function reissueAllRecordIds(): {
+  meals: MealEntry[]; exercises: ExerciseEntry[]; weights: WeightEntry[];
+  myFoods: MyFood[]; recipes: Recipe[];
+} {
+  const meals     = load<MealEntry[]>(KEYS.meals, []).map((m) => ({ ...m, id: generateId() }));
+  const exercises = load<ExerciseEntry[]>(KEYS.exercises, []).map((e) => ({ ...e, id: generateId() }));
+  const weights   = load<WeightEntry[]>(KEYS.weights, []).map((w) => ({ ...w, id: generateId() }));
+  const myFoods   = fetchMyFoodsLocal().map((f) => ({ ...f, id: generateId() }));
+  const recipes   = fetchRecipesLocal().map((r) => ({ ...r, id: generateId() }));
+  save(KEYS.meals, meals);
+  save(KEYS.exercises, exercises);
+  save(KEYS.weights, weights);
+  save(KEYS.myFoods, myFoods);
+  save(KEYS.recipes, recipes);
+  return { meals, exercises, weights, myFoods, recipes };
+}
+
 export function loadSettings(): AppSettings {
   return load<AppSettings>(KEYS.settings, {});
 }

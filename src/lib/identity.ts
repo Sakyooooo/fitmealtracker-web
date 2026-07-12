@@ -1,8 +1,11 @@
+import type { User } from '@supabase/supabase-js';
 import { supabase, supabaseEnabled } from './supabase';
 import {
   STORAGE_KEY_USER_ID,
   STORAGE_KEY_FRIEND_CODE,
   STORAGE_KEY_DISPLAY_NAME,
+  STORAGE_KEY_IDENTITY_MODE,
+  STORAGE_KEY_LAST_IDENTITY,
 } from './constants';
 
 // ── UUID ──────────────────────────────────────────────────────────────────────
@@ -55,25 +58,114 @@ export function ensureAuthUserId(): Promise<string> {
   return identityPromise;
 }
 
+function isAnonUser(user: User): boolean {
+  return (user as { is_anonymous?: boolean }).is_anonymous ?? false;
+}
+
+/** 前回解決した identity を記録（uid変化の検知＝マージ同期の要否判定に使う） */
+function rememberIdentity(uid: string, anonymous: boolean): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_LAST_IDENTITY, JSON.stringify({ uid, anonymous }));
+  } catch { /* quota */ }
+}
+
+export function getLastIdentity(): { uid: string; anonymous: boolean } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LAST_IDENTITY);
+    return raw ? (JSON.parse(raw) as { uid: string; anonymous: boolean }) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** OAuthコールバック処理中か（この間は匿名発行・復元ゲートを抑止する） */
+function isOAuthCallbackContext(): boolean {
+  if (typeof window === 'undefined') return false;
+  const { pathname, search, hash } = window.location;
+  return pathname.startsWith('/auth/callback')
+    || search.includes('code=')
+    || hash.includes('access_token=');
+}
+
+// 復元ゲート: セッションが無い（＝初回 or ストレージ消失後）とき、無言で新しい
+// 匿名IDを発行せず、ユーザーの選択（ログインして復元 / 新しく始める）を待つ。
+// 旧実装は即 signInAnonymously しており、消失後に別人IDで上書き運用が始まって
+// 記録・フレンドが見えなくなる事故の温床だった。
+let gateResolve: ((uid: string) => void) | null = null;
+
+/** 復元ゲートを表示すべきか（クライアント専用） */
+export async function needsIdentityGate(): Promise<boolean> {
+  if (!supabaseEnabled || !supabase || typeof window === 'undefined') return false;
+  if (isOAuthCallbackContext()) return false;
+  // 「新しく始める」選択済みの端末は従来どおり無音で匿名継続
+  if (localStorage.getItem(STORAGE_KEY_IDENTITY_MODE) === 'anonymous') return false;
+  const { data } = await supabase.auth.getSession();
+  return !data.session;
+}
+
+/** 復元ゲートで「新しく始める」を選んだとき。匿名IDを発行して identity を解決する。 */
+export async function startAsNewAnonymous(): Promise<string> {
+  let uid: string;
+  try {
+    const { data, error } = await supabase!.auth.signInAnonymously();
+    uid = !error && data.user?.id ? data.user.id : getOrCreateUserId();
+  } catch {
+    uid = getOrCreateUserId();
+  }
+  try { localStorage.setItem(STORAGE_KEY_IDENTITY_MODE, 'anonymous'); } catch { /* quota */ }
+  rememberIdentity(uid, true);
+  gateResolve?.(uid);
+  gateResolve = null;
+  return uid;
+}
+
 async function resolveIdentity(): Promise<string> {
   if (!supabaseEnabled || !supabase) return getOrCreateUserId();
 
   try {
     // 既存セッションがあれば即利用（ネットワーク不要）
     const { data: sessionData } = await supabase.auth.getSession();
-    const existingId = sessionData.session?.user?.id;
-    if (existingId) return existingId;
-
-    // 無ければ匿名サインイン（無音・自動）
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (!error && data.user?.id) return data.user.id;
-
-    if (error) {
-      console.warn(
-        '[identity] 匿名サインイン不可（Supabaseダッシュボードで Anonymous Sign-In を有効化してください）:',
-        error.message,
-      );
+    const user = sessionData.session?.user;
+    if (user?.id) {
+      // 前回と同じuidのときだけ記録を更新（別uidはマージ同期側が処理してから更新する）
+      const last = getLastIdentity();
+      if (!last || last.uid === user.id) rememberIdentity(user.id, isAnonUser(user));
+      return user.id;
     }
+
+    // OAuthコールバック処理中はセッション確立を待つ。
+    // ここで匿名サインインするとサインイン成立前に別IDを作ってしまう。
+    if (isOAuthCallbackContext()) {
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+        const { data } = await supabase.auth.getSession();
+        const u = data.session?.user;
+        if (u?.id) return u.id;
+      }
+      return getOrCreateUserId();
+    }
+
+    // 「新しく始める」選択済みの端末は従来どおり無音で匿名サインイン
+    if (localStorage.getItem(STORAGE_KEY_IDENTITY_MODE) === 'anonymous') {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (!error && data.user?.id) {
+        rememberIdentity(data.user.id, true);
+        return data.user.id;
+      }
+      if (error) {
+        console.warn(
+          '[identity] 匿名サインイン不可（Supabaseダッシュボードで Anonymous Sign-In を有効化してください）:',
+          error.message,
+        );
+      }
+      return getOrCreateUserId();
+    }
+
+    // 初回 or ストレージ消失後: 復元ゲートの選択を待つ。
+    // ログインを選んだ場合はページ遷移するためこのPromiseは破棄され、
+    // 「新しく始める」を選んだ場合は startAsNewAnonymous が resolve する。
+    return await new Promise<string>((resolve) => { gateResolve = resolve; });
   } catch (err) {
     console.warn('[identity] ensureAuthUserId フォールバック:', err);
   }
@@ -247,13 +339,13 @@ export async function updateDisplayName(
   }
 }
 
-// ── アカウント連携 / サインイン（任意・データ復元用） ──────────────────────────
+// ── アカウントログイン（データ永続化・復元用） ─────────────────────────────────
 //
-// 既定は匿名ユーザー。希望者だけ Google / メールを「連携」して永続化すると、
-// 端末を変えても・ストレージを消しても、サインインで同じ uid に復帰できる。
-//   - linkGoogle / linkEmail : 現在の匿名アカウントを格上げ（uid 維持）
-//   - signInWithGoogle / signInWithEmail : 別端末/初期化後に連携済みアカウントへ復帰
-// ※ いずれも Supabase ダッシュボードでプロバイダ設定（Google有効化／メール送信）が必要。
+// 既定は匿名ユーザー。ログインしておくと、端末を変えても・ストレージを消しても、
+// 再ログインで同じアカウントに復帰できる。導線は loginWithGoogle / loginWithEmail の
+// 1本ずつ（匿名中は昇格、消失後は復帰、を内部で自動判別）。完了後は /auth/callback が
+// 受け、uid が変わった場合は syncMerge.mergeAfterSignIn がデータを引き継ぐ。
+// ※ Supabase ダッシュボードでプロバイダ設定（Google有効化／メール送信）が必要。
 
 export type AuthInfo = {
   isAnonymous: boolean;
@@ -274,47 +366,56 @@ export async function getAuthInfo(): Promise<AuthInfo | null> {
   return { isAnonymous: isAnon, email: u.email ?? null, providers };
 }
 
-function authRedirectTo(): string | undefined {
-  if (typeof window === 'undefined') return undefined;
-  return `${window.location.origin}/profile`;
+function authCallbackUrl(): string {
+  return `${window.location.origin}/auth/callback`;
 }
 
-/** 現在の(匿名)アカウントに Google を紐付けて永続化（同じ uid を保持）。 */
-export async function linkGoogle(): Promise<{ error: string | null }> {
+/**
+ * ログイン導線は常にこれ1本。
+ * - 匿名セッション中: linkIdentity で昇格を試みる（uid維持＝データ無傷）。
+ *   そのGoogleが既存アカウントに紐付いている場合はOAuth後にエラーが返り、
+ *   /auth/callback が signInWithOAuth へ自動フォールバックする。
+ * - セッションなし（ストレージ消失後など）: signInWithOAuth で復帰
+ *   （既存ならそのアカウントへ、初見なら新規作成）。
+ */
+export async function loginWithGoogle(): Promise<{ error: string | null }> {
   if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
-  const { error } = await supabase.auth.linkIdentity({
-    provider: 'google',
-    options: { redirectTo: authRedirectTo() },
-  });
-  return { error: error?.message ?? null };
-}
-
-/** 現在の(匿名)アカウントにメールを紐付け（確認メールが届く）。 */
-export async function linkEmail(email: string): Promise<{ error: string | null }> {
-  if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
-  const { error } = await supabase.auth.updateUser(
-    { email: email.trim() },
-    { emailRedirectTo: authRedirectTo() },
-  );
-  return { error: error?.message ?? null };
-}
-
-/** 別端末/初期化後に、連携済み Google アカウントへサインインして復帰。 */
-export async function signInWithGoogle(): Promise<{ error: string | null }> {
-  if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
+  const redirectTo = authCallbackUrl();
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (user && isAnonUser(user)) {
+    const { error } = await supabase.auth.linkIdentity({
+      provider: 'google',
+      options: { redirectTo },
+    });
+    return { error: error?.message ?? null };
+  }
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: authRedirectTo() },
+    options: { redirectTo },
   });
   return { error: error?.message ?? null };
 }
 
-/** 連携済みメールへマジックリンクを送ってサインイン（復帰）。 */
-export async function signInWithEmail(email: string): Promise<{ error: string | null }> {
+/**
+ * メールでのログイン（Googleと同じ一本化方針）。
+ * 匿名中はメール紐付け（確認メール）、それ以外はマジックリンクでサインイン。
+ */
+export async function loginWithEmail(email: string): Promise<{ error: string | null }> {
   if (!supabaseEnabled || !supabase) return { error: 'Supabaseが未設定です' };
+  const redirectTo = authCallbackUrl();
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (user && isAnonUser(user)) {
+    const { error } = await supabase.auth.updateUser(
+      { email: email.trim() },
+      { emailRedirectTo: redirectTo },
+    );
+    return { error: error?.message ?? null };
+  }
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim(),
-    options: { emailRedirectTo: authRedirectTo() },
+    options: { emailRedirectTo: redirectTo },
   });
   return { error: error?.message ?? null };
 }

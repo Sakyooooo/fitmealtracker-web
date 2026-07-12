@@ -1,5 +1,6 @@
 import Navigation from './Navigation';
 import OnboardingModal from '@/components/onboarding/OnboardingModal';
+import RestoreGate from '@/components/onboarding/RestoreGate';
 import MigrationBanner from '@/components/migration/MigrationBanner';
 import StoragePersistence from './StoragePersistence';
 import DailyRecapAutoTrigger from '@/components/recap/DailyRecapAutoTrigger';
@@ -13,6 +14,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         {children}
       </div>
       <Navigation />
+      <RestoreGate />
       <OnboardingModal />
       <MigrationBanner />
       <StoragePersistence />
