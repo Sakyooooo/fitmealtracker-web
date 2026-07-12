@@ -114,6 +114,8 @@ export async function sbFetchMyMeals(): Promise<MealEntry[] | null> {
     protein:  r.protein as number | undefined,
     fat:      r.fat as number | undefined,
     carbs:    r.carbs as number | undefined,
+    // クラウド復元では写真は photoUri(端末ローカル)ではなく、Storageの公開URLで復元する
+    photoUrl: (r.photo_url as string | null) ?? undefined,
     taggedUserIds:    (r.tagged_user_ids as string[] | null) ?? undefined,
     sharedFromMealId: (r.shared_from_meal_id as string | null) ?? undefined,
   }));

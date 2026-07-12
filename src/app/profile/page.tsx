@@ -33,9 +33,9 @@ import { buildRecapData } from '@/lib/recap';
 import {
   getNotificationsEnabled,
   setNotificationsEnabled,
-  requestNotificationPermission,
   REMINDER_SLOTS,
 } from '@/lib/mealReminder';
+import { subscribeToPush, unsubscribeFromPush } from '@/lib/pushClient';
 
 const ACCENT = '#AB47BC';
 
@@ -128,8 +128,12 @@ function ProfileInner() {
   }
 
   // ── 通知設定 ──────────────────────────────────────────────────────────────────
+  // Web Push（アプリを閉じていても届く本命）＋ タブ内setInterval/Periodic Sync
+  // （フォールバック）の両方をこのトグル1つでON/OFFする。
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+  const [notifBusy, setNotifBusy] = useState(false);
+  const [notifError, setNotifError] = useState<string | null>(null);
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission);
@@ -138,17 +142,20 @@ function ProfileInner() {
   }, []);
 
   async function handleNotifToggle() {
+    setNotifError(null);
     if (notifEnabled) {
+      await unsubscribeFromPush();
       await setNotificationsEnabled(false);
       setNotifEnabled(false);
       return;
     }
-    const perm = await requestNotificationPermission();
-    setNotifPermission(perm);
-    if (perm === 'granted') {
-      await setNotificationsEnabled(true);
-      setNotifEnabled(true);
-    }
+    setNotifBusy(true);
+    const { error } = await subscribeToPush();
+    setNotifPermission(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+    setNotifBusy(false);
+    if (error) { setNotifError(error); return; }
+    await setNotificationsEnabled(true);
+    setNotifEnabled(true);
   }
 
   // ── ふり返り（トップの「今日のふり返り」＋カレンダーの日付タップで開く） ─────────────
@@ -412,7 +419,7 @@ function ProfileInner() {
                 <button
                   type="button"
                   onClick={notifPermission === 'denied' ? undefined : handleNotifToggle}
-                  disabled={notifPermission === 'denied'}
+                  disabled={notifPermission === 'denied' || notifBusy}
                   aria-label={notifEnabled ? '通知をオフにする' : '通知をオンにする'}
                   className="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:opacity-40"
                   style={{ background: notifEnabled ? ACCENT : '#D1D5DB' }}
@@ -434,6 +441,12 @@ function ProfileInner() {
                   ))}
                 </div>
               )}
+              {notifError && (
+                <p className="border-t border-gray-100 px-4 py-2 text-[11px] text-red-500 leading-snug">{notifError}</p>
+              )}
+              <p className="border-t border-gray-100 px-4 py-2 text-[10px] text-gray-400 leading-snug">
+                iPhoneの場合、ホーム画面に追加したアプリからのみ通知を受け取れます。
+              </p>
             </div>
           </>
         )}

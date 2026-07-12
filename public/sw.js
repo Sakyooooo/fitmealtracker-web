@@ -136,6 +136,25 @@ async function checkAndNotify() {
   }
 }
 
+// ── サーバー発の Web Push（アプリを閉じていても届く本命の経路） ───────────────
+// send-reminders Edge Function から届く。payload は
+// { title, body, tag } のJSON（pushClient.ts/send-reminders/index.ts と対応）。
+self.addEventListener('push', (event) => {
+  let data = { title: 'FitMealTracker', body: '', tag: 'meal-reminder' };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch { /* ignore malformed payload */ }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      tag: data.tag,
+      renotify: false,
+    }),
+  );
+});
+
 // ── 通知クリックでアプリを開く ───────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

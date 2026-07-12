@@ -43,3 +43,6 @@ expo-env.d.ts
 
 # Avatar/asset build temp renders
 scripts/_render/
+
+# Supabase CLI local state
+supabase/.temp/

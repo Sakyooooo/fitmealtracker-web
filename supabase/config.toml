@@ -1,0 +1,6 @@
+project_id = "cusqygouhfnmdhcoswxk"
+
+# send-reminders は pg_cron(pg_net) から x-cron-secret ヘッダーのみで認証する
+# （SupabaseのJWTを持たない呼び出しのため、ゲートウェイのJWT検証を無効化する）。
+[functions.send-reminders]
+verify_jwt = false
