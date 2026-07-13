@@ -21,7 +21,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import { MealEntry, ExerciseEntry, WeightEntry, AppSettings, GymSession } from '@/lib/types';
+import { MealEntry, ExerciseEntry, WeightEntry, AppSettings, GymSession, WorkoutSet } from '@/lib/types';
 import {
   fetchMeals,
   insertMeal,
@@ -87,7 +87,7 @@ export type AppDataStore = {
   endGym: () => void;
   cancelGym: () => void;
   updateGymMemo: (memo: string) => void;
-  saveGymAsExercise: (calories: number) => void;
+  saveGymAsExercise: (calories: number, workoutSets?: WorkoutSet[], performed?: string[]) => void;
 };
 
 const AppDataContext = createContext<AppDataStore | null>(null);
@@ -348,16 +348,29 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const saveGymAsExercise = useCallback((calories: number) => {
+  const saveGymAsExercise = useCallback((
+    calories: number,
+    workoutSets?: WorkoutSet[],
+    performed?: string[],
+  ) => {
     setGymSession((prev) => {
       if (!prev || prev.status !== 'completed') return prev;
       const durationMin = Math.round((prev.durationSec ?? 0) / 60);
+      // 種目チェックがあれば記録名に反映（例: ジム（ベンチプレス・スクワット 他））
+      const names = performed ?? [];
+      const name = names.length === 0
+        ? 'ジムセッション'
+        : `ジム（${names.slice(0, 2).join('・')}${names.length > 2 ? ' 他' : ''}）`;
+      // 重量・回数の詳細はメモ欄に人が読める形で残す（タイムラインでも見える）
+      const setLines = (workoutSets ?? [])
+        .map((s) => `${s.name} ${s.weightKg}kg×${s.sets}セット×${s.reps}回`);
+      const note = [...setLines, prev.memo ?? ''].filter(Boolean).join('\n');
       const exerciseData: Omit<ExerciseEntry, 'id'> = {
-        name: 'ジムセッション',
+        name,
         durationMinutes: durationMin > 0 ? durationMin : 1,
         caloriesBurned: calories,
         date: prev.startedAt.slice(0, 10),
-        note: prev.memo ?? '',
+        note,
         type: 'gymSession',
       };
       // deleteGymSession は insertExercise 成功後にのみ実行

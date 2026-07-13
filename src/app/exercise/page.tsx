@@ -91,7 +91,6 @@ export default function ExercisePage() {
         onCancel={cancelGym}
         onMemoChange={updateGymMemo}
         onSave={saveGymAsExercise}
-        onAddExercise={(data) => addExercise(data)}
         onAddManual={() => setShowAddModal(true)}
         onGoalSetting={openGoalModal}
       />

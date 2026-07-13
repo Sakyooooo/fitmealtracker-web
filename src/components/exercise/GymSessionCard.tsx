@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ExerciseEntry, GymSession, GymGoalType, WorkoutSet } from '@/lib/types';
+import { GymSession, GymGoalType, WorkoutSet } from '@/lib/types';
 import { GYM_BG_URL, BG_OPACITY, HERO_FONT_SIZE, TIMER_FONT_SIZE } from '@/lib/constants';
 import { GYM_PRESETS, estimateExerciseCalories } from '@/lib/activities';
-import { todayString } from '@/lib/stats';
 import type { ExerciseClip } from './ExerciseAvatarStage';
 
 // three.js を含むため遅延読み込み（セッション開始時にのみロード）
@@ -32,13 +31,26 @@ const EXERCISE_CLIP: Record<string, ExerciseClip> = {
   'ウォーキング': 'walk',
 };
 
-/** 種目ごとの計測状態（タップで開始、切替で前の種目を自動保存） */
-type ExerciseTiming = { name: string; startedAt: number };
+/** 種目ごとの「前回の重量・セット・回数」記憶（詳細記録を1タップにするため） */
+const LAST_SETS_KEY = 'fmt_gym_last_sets';
 
-function fmtShort(s: number) {
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+function loadLastSets(): Record<string, Omit<WorkoutSet, 'name'>> {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(localStorage.getItem(LAST_SETS_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveLastSets(sets: WorkoutSet[]): void {
+  try {
+    const store = loadLastSets();
+    for (const s of sets) {
+      store[s.name] = { weightKg: s.weightKg, sets: s.sets, reps: s.reps };
+    }
+    localStorage.setItem(LAST_SETS_KEY, JSON.stringify(store));
+  } catch { /* quota */ }
 }
 
 export type GymGoal = { type: GymGoalType; value: number };
@@ -52,9 +64,8 @@ interface Props {
   onEnd: () => void;
   onCancel: () => void;
   onMemoChange: (memo: string) => void;
-  onSave: (calories: number, sets: WorkoutSet[]) => void;
-  /** 種目タイマーで計測した1種目ぶんを ExerciseEntry として保存する */
-  onAddExercise: (data: Omit<ExerciseEntry, 'id'>) => void;
+  /** セッションを運動記録として保存（種目チェックと重量詳細はオプション） */
+  onSave: (calories: number, sets: WorkoutSet[], performed: string[]) => void;
   onAddManual?: () => void;
   onGoalSetting?: () => void;
 }
@@ -88,7 +99,7 @@ function ProgressBar({ pct }: { pct: number }) {
 
 export default function GymSessionCard({
   session, todayBurned, todayMinutes, gymGoal,
-  onStart, onEnd, onCancel, onMemoChange, onSave, onAddExercise, onAddManual, onGoalSetting,
+  onStart, onEnd, onCancel, onMemoChange, onSave, onAddManual, onGoalSetting,
 }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [calories, setCalories] = useState('');
@@ -97,65 +108,54 @@ export default function GymSessionCard({
   const [newSet, setNewSet] = useState<WorkoutSet>({ name: '', weightKg: 0, sets: 3, reps: 10 });
   const [showSetForm, setShowSetForm] = useState(false);
   const [demoClip, setDemoClip] = useState<ExerciseClip>('idle'); // アバターが実演中の種目
-  const [timing, setTiming] = useState<ExerciseTiming | null>(null); // 計測中の種目
-  const [exElapsed, setExElapsed] = useState(0);
-  const [performed, setPerformed] = useState<string[]>([]); // セッション中に行った種目名（完了画面の種目記録プリフィル用）
+  // セッション中に「やった」とチェックした種目（計測はしない。完了画面に引き継がれる）
+  const [performed, setPerformed] = useState<string[]>([]);
+  const [customExercises, setCustomExercises] = useState<string[]>([]);
+  const [lastSets, setLastSets] = useState(loadLastSets);
+  const prefilledRef = useRef(false); // カロリー自動プレフィルを1回に留める
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const exIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
-  // ── 種目タイマー（チップで開始・切替・完了。切替時は前の種目を自動保存） ──────
+  // セッションが変わったら（保存/キャンセル後や新規開始）、種目まわりの状態をリセット。
+  // これを怠ると前回セッションのチェック・重量詳細が次のセッションへ持ち越される。
   useEffect(() => {
-    if (timing) {
-      const t = timing;
-      setExElapsed(Math.floor((Date.now() - t.startedAt) / 1000));
-      exIntervalRef.current = setInterval(
-        () => setExElapsed(Math.floor((Date.now() - t.startedAt) / 1000)),
-        500,
-      );
-    } else {
-      if (exIntervalRef.current) clearInterval(exIntervalRef.current);
-      setExElapsed(0);
-    }
-    return () => { if (exIntervalRef.current) clearInterval(exIntervalRef.current); };
-  }, [timing]);
-
-  function saveTiming(t: ExerciseTiming) {
-    // eslint-disable-next-line react-hooks/purity
-    const durationMin = Math.max(1, Math.round((Date.now() - t.startedAt) / 60000));
-    onAddExercise({
-      name: t.name,
-      durationMinutes: durationMin,
-      caloriesBurned: estimateExerciseCalories(t.name, durationMin),
-      date: todayString(),
-      note: '',
-      type: 'gymSession',
-    });
-    setPerformed((prev) => (prev.includes(t.name) ? prev : [...prev, t.name]));
-  }
-
-  function handleExerciseTap(name: string) {
-    if (timing?.name === name) return; // 同じ種目は無視（終わるときは「完了」）
-    if (timing) saveTiming(timing);    // 前の種目を保存して切替
-    // eslint-disable-next-line react-hooks/purity
-    setTiming({ name, startedAt: Date.now() });
-    setDemoClip(EXERCISE_CLIP[name] ?? 'idle');
-  }
-
-  function handleExerciseDone() {
-    if (!timing) return;
-    saveTiming(timing);
-    setTiming(null);
+    const id = session?.id ?? null;
+    if (id === sessionIdRef.current) return;
+    sessionIdRef.current = id;
+    setPerformed([]);
+    setCustomExercises([]);
+    setWorkoutSets([]);
+    setCalories('');
+    setShowSetForm(false);
     setDemoClip('idle');
+    setLastSets(loadLastSets()); // 直前のセッションで保存した「前回」を反映
+    prefilledRef.current = false;
+  }, [session?.id]);
+
+  // ── 種目チェック（タップでオン/オフ。アバターは最後にオンにした種目を実演） ────
+  function toggleExercise(name: string) {
+    setPerformed((prev) => {
+      if (prev.includes(name)) {
+        // オフにした種目を実演中なら待機へ戻す
+        if (EXERCISE_CLIP[name] === demoClip || prev[prev.length - 1] === name) setDemoClip('idle');
+        return prev.filter((n) => n !== name);
+      }
+      setDemoClip(EXERCISE_CLIP[name] ?? 'idle');
+      return [...prev, name];
+    });
   }
 
-  /** セッション終了。計測中の種目が残っていれば保存してから終える。 */
-  function handleEnd() {
-    if (timing) {
-      saveTiming(timing);
-      setTiming(null);
-      setDemoClip('idle');
+  function addCustomExercise() {
+    // プリセットに無い種目もチェックの対象にできるようにする
+    const name = window.prompt('種目名を入力')?.trim();
+    if (!name) return;
+    if (!GYM_PRESETS.includes(name) && !customExercises.includes(name)) {
+      setCustomExercises((prev) => [...prev, name]);
     }
-    onEnd();
+    if (!performed.includes(name)) {
+      setPerformed((prev) => [...prev, name]);
+      setDemoClip(EXERCISE_CLIP[name] ?? 'idle');
+    }
   }
 
   useEffect(() => {
@@ -169,6 +169,17 @@ export default function GymSessionCard({
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [session?.status, session?.startedAt, session?.durationSec]);
+
+  // ── カロリー自動プレフィル（完了画面に入ったとき1回だけ。修正は自由） ─────────
+  const durationMin = Math.max(1, Math.round((session?.durationSec ?? 0) / 60));
+  const estimatedKcal = estimateExerciseCalories('ジムセッション', durationMin);
+  useEffect(() => {
+    if (session?.status === 'completed' && !prefilledRef.current) {
+      prefilledRef.current = true;
+      setCalories(String(estimatedKcal));
+    }
+    if (session?.status !== 'completed') prefilledRef.current = false;
+  }, [session?.status, estimatedKcal]);
 
   const minHeight = 'calc(100svh - 130px)';
 
@@ -214,7 +225,6 @@ export default function GymSessionCard({
 
           {/* Big metric */}
           <div className="flex-1 flex flex-col items-center justify-center px-4">
-            {/* Number — with or without goal denominator */}
             <div className="flex items-baseline gap-2">
               <p
                 className="font-black italic leading-none tracking-tighter text-gray-900 tabular-nums"
@@ -233,7 +243,6 @@ export default function GymSessionCard({
             </div>
             <div className="w-44 h-[2px] bg-gray-900 mt-3 mb-3" />
             <p className="text-sm font-bold tracking-[0.2em] text-gray-500">{displayUnit}</p>
-            {/* Progress bar only when goal is set */}
             {gymGoal && <ProgressBar pct={progressPct} />}
             {gymGoal && progressPct >= 100 && (
               <p className="text-xs font-black text-green-500 mt-2 tracking-widest">GOAL REACHED 🎉</p>
@@ -281,6 +290,7 @@ export default function GymSessionCard({
         ? ((todayMinutes + sessionMin) / gymGoal.value) * 100
         : (todayBurned / gymGoal.value) * 100
       : 0;
+    const sessionExercises = [...GYM_PRESETS, ...customExercises];
 
     return (
       <div className="flex flex-col relative overflow-hidden" style={{ minHeight }}>
@@ -333,47 +343,40 @@ export default function GymSessionCard({
             </p>
             {gymGoal && <ProgressBar pct={activePct} />}
 
-            {/* ── アバターステージ（計測中の種目を実演） ── */}
+            {/* ── アバターステージ（チェックした種目を実演。操作は必須ではない） ── */}
             <div className="flex-1 w-full min-h-[250px] relative">
               <ExerciseAvatarStage clip={demoClip} className="absolute inset-0" />
-
-              {/* 計測中バー（種目名・経過時間・完了） */}
-              {timing && (
-                <div className="absolute top-1 left-0 right-0 flex justify-center pointer-events-none">
-                  <div className="pointer-events-auto flex items-center gap-3 bg-gray-900/90 rounded-full pl-4 pr-1.5 py-1.5 shadow-lg">
-                    <span className="text-white font-black text-xs truncate max-w-[110px]">{timing.name}</span>
-                    <span className="text-white/90 font-black text-sm tabular-nums">{fmtShort(exElapsed)}</span>
-                    <button
-                      type="button"
-                      onClick={handleExerciseDone}
-                      className="px-3 py-1.5 bg-[#FF7043] text-white text-[11px] font-black rounded-full active:scale-95 transition-transform"
-                    >
-                      完了
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* ── 種目チップ（タップで計測開始。別の種目にタップすると前の種目を自動保存して切替） ── */}
+            {/* ── 種目チップ（やった種目をタップでチェック。任意・計測なし） ── */}
+            <p className="w-full text-[10px] font-bold text-gray-400 mb-1.5">
+              やった種目をタップ（任意・あとからでもOK）
+            </p>
             <div className="w-full flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              {GYM_PRESETS.map((name) => {
-                const active = timing?.name === name;
+              {sessionExercises.map((name) => {
+                const active = performed.includes(name);
                 return (
                   <button
                     key={name}
                     type="button"
-                    onClick={() => handleExerciseTap(name)}
+                    onClick={() => toggleExercise(name)}
                     className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-bold border transition-colors ${
                       active
                         ? 'bg-[#FF7043] border-[#FF7043] text-white shadow-sm'
                         : 'bg-white/80 border-gray-200 text-gray-600 hover:border-[#FF7043] hover:text-[#FF7043]'
                     }`}
                   >
-                    {name}
+                    {active ? '✓ ' : ''}{name}
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={addCustomExercise}
+                className="shrink-0 px-3.5 py-2 rounded-full text-xs font-bold border border-dashed border-gray-300 text-gray-400 bg-white/80"
+              >
+                ＋その他
+              </button>
             </div>
           </div>
 
@@ -383,7 +386,7 @@ export default function GymSessionCard({
                 className="w-14 h-14 rounded-full bg-white/80 border border-gray-200 flex items-center justify-center shadow-sm">
                 <span className="text-gray-500 font-bold text-xl">×</span>
               </button>
-              <button type="button" onClick={handleEnd}
+              <button type="button" onClick={onEnd}
                 className="w-28 h-28 rounded-full bg-gray-900 flex items-center justify-center shadow-xl active:scale-95 transition-transform">
                 <span className="text-white font-black text-lg tracking-wide">終了</span>
               </button>
@@ -396,6 +399,38 @@ export default function GymSessionCard({
   }
 
   // ── Completed ────────────────────────────────────────────────────────────────
+  // 種目リスト = セッション中のチェック ＋ 完了画面で追加した詳細（重複なし）
+  const listedNames = [...performed];
+  for (const s of workoutSets) if (!listedNames.includes(s.name)) listedNames.push(s.name);
+
+  function openSetForm(name: string) {
+    const last = lastSets[name];
+    setNewSet({ name, weightKg: last?.weightKg ?? 0, sets: last?.sets ?? 3, reps: last?.reps ?? 10 });
+    setShowSetForm(true);
+  }
+
+  function applyLast(name: string) {
+    const last = lastSets[name];
+    if (!last) return;
+    setWorkoutSets((prev) => [
+      ...prev.filter((s) => s.name !== name),
+      { name, weightKg: last.weightKg, sets: last.sets, reps: last.reps },
+    ]);
+  }
+
+  function removeExercise(name: string) {
+    setPerformed((prev) => prev.filter((n) => n !== name));
+    setWorkoutSets((prev) => prev.filter((s) => s.name !== name));
+  }
+
+  function handleSave() {
+    // 未入力・不正値は自動推定値で保存（入力を強制しない）
+    const parsed = parseInt(calories, 10);
+    const kcal = Number.isNaN(parsed) || parsed < 0 ? estimatedKcal : parsed;
+    saveLastSets(workoutSets);
+    onSave(kcal, workoutSets, listedNames);
+  }
+
   return (
     <div className="flex flex-col relative overflow-hidden" style={{ minHeight }}>
       <div
@@ -422,7 +457,7 @@ export default function GymSessionCard({
             <div className="w-44 h-[2px] bg-gray-900 mt-3 mb-4" />
           </div>
 
-          {/* 消費カロリー */}
+          {/* 消費カロリー（時間から自動推定・そのまま保存OK） */}
           <div className="w-full max-w-xs mx-auto mb-4">
             <p className="text-xs font-bold tracking-widest text-gray-400 text-center mb-2">
               消費カロリー（KCAL）
@@ -433,48 +468,59 @@ export default function GymSessionCard({
               type="number" placeholder="0" min={0}
               value={calories} onChange={(e) => setCalories(e.target.value)}
             />
+            <p className="text-[10px] font-bold text-gray-400 text-center mt-1.5">
+              時間から自動推定しました。そのまま保存でOK・修正も自由です
+            </p>
           </div>
 
-          {/* 種目記録 */}
+          {/* 種目記録（チェック済みが並ぶ。重量・回数は任意） */}
           <div className="w-full max-w-xs mx-auto mb-4">
-            <p className="text-xs font-bold tracking-widest text-gray-400 mb-2">種目記録（任意）</p>
+            <p className="text-xs font-bold tracking-widest text-gray-400 mb-2">種目（任意）</p>
 
-            {/* セッション中に計測した種目 → タップで重量/回数の入力フォームへプリフィル */}
-            {performed.length > 0 && (
-              <div className="mb-2">
-                <p className="text-[10px] font-bold text-gray-400 mb-1.5">セッション中の種目（タップで詳細を記録）</p>
-                <div className="flex gap-1.5 flex-wrap">
-                  {performed.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => {
-                        setNewSet({ name, weightKg: 0, sets: 3, reps: 10 });
-                        setShowSetForm(true);
-                      }}
-                      className="px-2.5 py-1.5 bg-white/80 border border-[#FF7043]/40 text-[#FF7043] text-[11px] font-bold rounded-full hover:bg-[#FFF3F0]"
-                    >
-                      ＋ {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {workoutSets.length > 0 && (
+            {listedNames.length > 0 && (
               <div className="space-y-1.5 mb-2">
-                {workoutSets.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between bg-white/80 border border-gray-100 rounded-xl px-3 py-2">
-                    <span className="text-sm font-bold text-gray-800">{s.name}</span>
-                    <span className="text-xs text-gray-500 font-medium">
-                      {s.weightKg}kg × {s.sets}セット × {s.reps}回
-                    </span>
-                    <button type="button" onClick={() => setWorkoutSets((prev) => prev.filter((_, j) => j !== i))}
-                      className="text-gray-300 hover:text-gray-500 ml-2 text-lg leading-none">×</button>
-                  </div>
-                ))}
+                {listedNames.map((name) => {
+                  const detail = workoutSets.find((s) => s.name === name);
+                  const last = lastSets[name];
+                  return (
+                    <div key={name} className="flex items-center gap-2 bg-white/80 border border-gray-100 rounded-xl px-3 py-2">
+                      <span className="text-sm font-bold text-gray-800 flex-1 min-w-0 truncate">{name}</span>
+                      {detail ? (
+                        <button
+                          type="button"
+                          onClick={() => openSetForm(name)}
+                          className="text-xs text-gray-500 font-medium"
+                        >
+                          {detail.weightKg}kg × {detail.sets}セット × {detail.reps}回
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          {last && (
+                            <button
+                              type="button"
+                              onClick={() => applyLast(name)}
+                              className="px-2 py-1 rounded-full border border-[#FF7043]/40 text-[#FF7043] text-[10px] font-bold hover:bg-[#FFF3F0]"
+                            >
+                              前回: {last.weightKg}kg×{last.sets}×{last.reps}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openSetForm(name)}
+                            className="px-2 py-1 rounded-full border border-gray-200 text-gray-400 text-[10px] font-bold"
+                          >
+                            詳細
+                          </button>
+                        </div>
+                      )}
+                      <button type="button" onClick={() => removeExercise(name)}
+                        className="text-gray-300 hover:text-gray-500 text-lg leading-none flex-shrink-0">×</button>
+                    </div>
+                  );
+                })}
               </div>
             )}
+
             {showSetForm ? (
               <div className="bg-gray-50 rounded-2xl p-3 space-y-2">
                 <input
@@ -517,8 +563,10 @@ export default function GymSessionCard({
                   </button>
                   <button type="button"
                     onClick={() => {
-                      if (!newSet.name.trim()) return;
-                      setWorkoutSets((prev) => [...prev, newSet]);
+                      const name = newSet.name.trim();
+                      if (!name) return;
+                      setWorkoutSets((prev) => [...prev.filter((s) => s.name !== name), { ...newSet, name }]);
+                      if (!performed.includes(name)) setPerformed((prev) => [...prev, name]);
                       setNewSet({ name: '', weightKg: 0, sets: 3, reps: 10 });
                       setShowSetForm(false);
                     }}
@@ -529,7 +577,7 @@ export default function GymSessionCard({
               </div>
             ) : (
               <button type="button"
-                onClick={() => setShowSetForm(true)}
+                onClick={() => { setNewSet({ name: '', weightKg: 0, sets: 3, reps: 10 }); setShowSetForm(true); }}
                 className="w-full py-2.5 rounded-xl border border-dashed border-gray-200 text-sm font-bold text-gray-400 flex items-center justify-center gap-1.5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -537,6 +585,9 @@ export default function GymSessionCard({
                 種目を追加
               </button>
             )}
+            <p className="text-[10px] text-gray-400 mt-2">
+              重量・回数はあとから運動リストでも確認できます（メモに残ります）
+            </p>
           </div>
         </div>
 
@@ -547,11 +598,7 @@ export default function GymSessionCard({
               <span className="text-gray-500 font-bold text-xl">×</span>
             </button>
             <button type="button"
-              onClick={() => {
-                const kcal = parseInt(calories, 10);
-                if (isNaN(kcal) || kcal < 0) { alert('消費カロリーを入力してください'); return; }
-                onSave(kcal, workoutSets);
-              }}
+              onClick={handleSave}
               className="w-28 h-28 rounded-full bg-[#FF7043] flex items-center justify-center shadow-xl active:scale-95 transition-transform">
               <span className="text-white font-black text-lg tracking-wide">保存</span>
             </button>

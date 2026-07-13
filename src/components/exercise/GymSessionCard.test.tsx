@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import GymSessionCard from './GymSessionCard';
+import { estimateExerciseCalories } from '@/lib/activities';
 import { makeGymSession } from '@/test/factories';
 
 // jsdom には WebGL が無いため、3Dアバターステージはモックする
@@ -16,7 +17,6 @@ const baseProps = {
   onCancel: vi.fn(),
   onMemoChange: vi.fn(),
   onSave: vi.fn(),
-  onAddExercise: vi.fn(),
   onAddManual: vi.fn(),
   onGoalSetting: vi.fn(),
 };
@@ -83,6 +83,15 @@ describe('GymSessionCard — Active（セッション中）', () => {
       render(<GymSessionCard {...baseProps} session={activeSession} gymGoal={{ type: 'time', value: 60 }} todayMinutes={10} />),
     ).not.toThrow();
   });
+
+  it('種目チップのタップでチェックが付き、再タップで外れる（トグル）', () => {
+    render(<GymSessionCard {...baseProps} session={activeSession} />);
+    const chip = screen.getByText('ベンチプレス');
+    fireEvent.click(chip);
+    expect(screen.getByText('✓ ベンチプレス')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('✓ ベンチプレス'));
+    expect(screen.queryByText('✓ ベンチプレス')).not.toBeInTheDocument();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,13 +112,26 @@ describe('GymSessionCard — Completed（完了）', () => {
     expect(screen.getByText('保存')).toBeInTheDocument();
   });
 
-  it('カロリー未入力で保存ボタンを押すとアラートが出る（onSave は呼ばれない）', () => {
+  it('カロリーは所要時間から自動プレフィルされる', () => {
+    const estimated = estimateExerciseCalories('ジムセッション', 30); // 1800秒 = 30分
+    render(<GymSessionCard {...baseProps} session={completedSession} />);
+    expect(screen.getByDisplayValue(String(estimated))).toBeInTheDocument();
+  });
+
+  it('未入力操作なしでも保存でき、onSave に推定カロリーが渡る（入力を強制しない）', () => {
+    const estimated = estimateExerciseCalories('ジムセッション', 30);
     const onSave = vi.fn();
-    const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {});
     render(<GymSessionCard {...baseProps} session={completedSession} onSave={onSave} />);
     fireEvent.click(screen.getByText('保存'));
-    expect(onSave).not.toHaveBeenCalled();
-    expect(alertMock).toHaveBeenCalled();
-    alertMock.mockRestore();
+    expect(onSave).toHaveBeenCalledWith(estimated, [], []);
+  });
+
+  it('カロリーを手動修正した場合はその値で保存される', () => {
+    const onSave = vi.fn();
+    render(<GymSessionCard {...baseProps} session={completedSession} onSave={onSave} />);
+    const input = screen.getByPlaceholderText('0');
+    fireEvent.change(input, { target: { value: '500' } });
+    fireEvent.click(screen.getByText('保存'));
+    expect(onSave).toHaveBeenCalledWith(500, [], []);
   });
 });
