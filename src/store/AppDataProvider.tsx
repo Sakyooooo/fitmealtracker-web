@@ -51,6 +51,7 @@ import {
   sbUpsertGymSession, sbDeleteGymSession,
 } from '@/lib/supabaseRepository';
 import { ensureAuthUserId, syncUserToSupabase } from '@/lib/identity';
+import { notifyGymStart } from '@/lib/gymPlans';
 import { todayString } from '@/lib/stats';
 
 /** id をキーに union（端末間で増えた体重をマージ）。日付の新しい順に並べる。 */
@@ -303,6 +304,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const saved = await insertGymSession(new Date().toISOString());
       setGymSession(saved);
       sbUpsertGymSession(saved).catch(console.error);
+      // フレンドへ「ジム開始」をPush通知（設定でオフ可・失敗しても本体に影響なし）
+      if (loadSettings().notifyGymStart !== false) {
+        notifyGymStart().catch(console.error);
+      }
     } catch (error) {
       console.error('[AppData] startGym', error);
       alert('ジムセッションの開始に失敗しました。');

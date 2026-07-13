@@ -4,3 +4,7 @@ project_id = "cusqygouhfnmdhcoswxk"
 # （SupabaseのJWTを持たない呼び出しのため、ゲートウェイのJWT検証を無効化する）。
 [functions.send-reminders]
 verify_jwt = false
+
+# notify-gym-start はアプリ内から本人のJWT付きで呼ばれる（既定の検証を明示）。
+[functions.notify-gym-start]
+verify_jwt = true

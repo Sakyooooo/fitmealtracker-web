@@ -448,6 +448,28 @@ function ProfileInner() {
                 iPhoneの場合、ホーム画面に追加したアプリからのみ通知を受け取れます。
               </p>
             </div>
+
+            {/* ── ジム開始のフレンド通知（送信側設定） ── */}
+            <div className="mt-5 rounded-2xl border border-gray-100 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <p className="text-sm font-bold text-gray-800">ジム開始をフレンドに通知</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">STARTするとフレンドに「ジム開始！」が届きます</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateSettings({ notifyGymStart: !(settings.notifyGymStart ?? true) })}
+                  aria-label={(settings.notifyGymStart ?? true) ? 'ジム開始通知をオフにする' : 'ジム開始通知をオンにする'}
+                  className="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200"
+                  style={{ background: (settings.notifyGymStart ?? true) ? ACCENT : '#D1D5DB' }}
+                >
+                  <span
+                    className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200"
+                    style={{ transform: (settings.notifyGymStart ?? true) ? 'translateX(20px)' : 'translateX(0)' }}
+                  />
+                </button>
+              </div>
+            </div>
           </>
         )}
 

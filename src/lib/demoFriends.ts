@@ -6,8 +6,7 @@
  * 環境変数 NEXT_PUBLIC_DEMO_FRIENDS=on を設定する。
  */
 
-import type { GlobeUser } from '@/components/friends/FriendsGlobe';
-import type { TimelineItem } from '@/lib/types';
+import type { FriendPerson, TimelineItem } from '@/lib/types';
 
 /** テスト用フラグ。既定 OFF。NEXT_PUBLIC_DEMO_FRIENDS=on のときだけ有効。 */
 export const DEMO_FRIENDS_ENABLED = process.env.NEXT_PUBLIC_DEMO_FRIENDS === 'on';
@@ -35,8 +34,8 @@ const demoAvatar = (c1: string, c2: string, letter: string) =>
 const AOI_AVATAR = demoAvatar('#F6A6C1', '#EC4899', 'A');
 const KEN_AVATAR = demoAvatar('#86EFAC', '#22C55E', 'K');
 
-/** ダミーフレンド2体（地球儀＆フィルター用） */
-export const DEMO_GLOBE_USERS: GlobeUser[] = [
+/** ダミーフレンド2体（フィルター＆ジムタブ用） */
+export const DEMO_GLOBE_USERS: FriendPerson[] = [
   { id: FRIEND_AOI, name: 'Aoi', isMe: false, location: '大阪・日本', avatarUrl: AOI_AVATAR },
   { id: FRIEND_KEN, name: 'Ken', isMe: false, location: 'Seoul・Korea', avatarUrl: KEN_AVATAR },
 ];

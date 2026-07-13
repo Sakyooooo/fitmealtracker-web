@@ -10,7 +10,8 @@ import AddFriendModal from '@/components/friends/AddFriendModal';
 import NicknameModal from '@/components/friends/NicknameModal';
 import TimelineCard from '@/components/friends/TimelineCard';
 import PersonRecordsModal from '@/components/friends/PersonRecordsModal';
-import FriendsGlobe, { GlobeUser } from '@/components/friends/FriendsGlobe';
+import GymPlanTab from '@/components/friends/GymPlanTab';
+import type { FriendPerson } from '@/lib/types';
 import { loadSettings } from '@/lib/localRepository';
 import {
   DEMO_FRIENDS_ENABLED,
@@ -84,11 +85,11 @@ export default function FriendsPage() {
   const { items: timeline, loading: tlLoading, load: loadTimeline, react, addComment, deleteComment, markShared } = useTimeline();
   const { addMeal } = useMealData();
 
-  const [tab, setTab] = useState<'timeline' | 'globe'>('timeline');
+  const [tab, setTab] = useState<'timeline' | 'gym'>('timeline');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null); // null = 全体
   const [showConnect, setShowConnect] = useState(false);
   const [showNickname, setShowNickname] = useState(false);
-  const [modalUser, setModalUser] = useState<GlobeUser | null>(null); // 像タップで開く記録ポップアップ
+  const [modalUser, setModalUser] = useState<FriendPerson | null>(null); // 像タップで開く記録ポップアップ
   // テスト用ダミー投稿（Supabase 非依存・リアクションはローカルで処理）
   const [demoItems, setDemoItems] = useState<TimelineItem[]>(
     DEMO_FRIENDS_ENABLED ? DEMO_TIMELINE : [],
@@ -136,9 +137,9 @@ export default function FriendsPage() {
   }, [demoItems, timeline]);
 
   // フィルター・球で使う「自分＋友達」リスト
-  const people: GlobeUser[] = useMemo(() => {
+  const people: FriendPerson[] = useMemo(() => {
     const meId = userId ?? '__me__';
-    const list: GlobeUser[] = [
+    const list: FriendPerson[] = [
       { id: meId, name: myDisplayName, isMe: true, lastActivityAt: lastActivityByUser.get(meId), avatarUrl: myAvatarUrl },
     ];
     for (const f of friends) {
@@ -262,7 +263,7 @@ export default function FriendsPage() {
   }, [addMeal, markShared]);
 
   // 像タップ: その人の記録をポップアップ表示（自分・フレンド共通）
-  const handleSelectUser = useCallback((u: GlobeUser) => {
+  const handleSelectUser = useCallback((u: FriendPerson) => {
     setModalUser(u);
   }, []);
 
@@ -384,9 +385,9 @@ export default function FriendsPage() {
             </div>
           </button>
 
-          {/* Timeline / フレンドとの世界 トグル */}
+          {/* Timeline / ジム宣言 トグル */}
           <div className="flex items-center bg-gray-100 rounded-full p-1 gap-0.5 flex-shrink-0">
-            {([['timeline', 'Timeline'], ['globe', '🌏 World']] as const).map(([t, label]) => (
+            {([['timeline', 'Timeline'], ['gym', '🏋️ ジム']] as const).map(([t, label]) => (
               <button key={t} type="button" onClick={() => setTab(t)}
                 className="px-3.5 py-1.5 rounded-full text-xs font-black tracking-wide transition-all whitespace-nowrap"
                 style={tab === t
@@ -489,22 +490,8 @@ export default function FriendsPage() {
 
           </div>
         ) : (
-          /* ─ フレンドとの世界（地球儀タブ） ─ */
-          <div className="flex-1 flex flex-col px-4 pb-4 min-h-0">
-            <div className="flex items-center justify-between mb-2 flex-shrink-0">
-              <p className="text-xs font-black text-gray-400 tracking-widest uppercase">フレンドとの世界</p>
-              <span className="text-[10px] font-bold text-gray-300 tracking-widest">像をタップで記録</span>
-            </div>
-            {/* 上スペーサー（下スペーサーより大きく＝重心を中央より少し下へ） */}
-            <div className="flex-[5] min-h-0" />
-            <div className="h-[560px] flex-shrink-0 rounded-3xl overflow-hidden shadow-sm">
-              <FriendsGlobe users={people} onSelectUser={handleSelectUser} />
-            </div>
-            <p className="text-center text-[11px] text-gray-300 font-bold mt-3 flex-shrink-0">
-              ドラッグで回転・像をタップで記録を表示
-            </p>
-            <div className="flex-[1] min-h-0" />
-          </div>
+          /* ─ ジム宣言タブ（週間宣言＋みんなの今週） ─ */
+          <GymPlanTab meId={meId} people={people} onSelectPerson={handleSelectUser} />
         )}
       </div>
 

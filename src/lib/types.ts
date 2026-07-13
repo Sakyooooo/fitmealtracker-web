@@ -52,6 +52,8 @@ export type AppSettings = {
   targetCarbs?: number;
   gymGoalType?: GymGoalType;
   gymGoalValue?: number;
+  /** ジム開始をフレンドにPush通知するか（既定true。送信側のローカル設定） */
+  notifyGymStart?: boolean;
   location?: string;        // 例: "東京・日本"
   avatarUrl?: string;       // プロフィール画像（リサイズ済み data URL）
   // ── 目標自動計算（GoalPlanner）用のプロフィール ──
@@ -180,6 +182,16 @@ export type Friendship = {
   status: FriendStatus;
   created_at: string;
   friend: FriendUser;   // 相手側のユーザー情報
+};
+
+/** 友達タブで扱う「自分＋フレンド」の表示用ユーザー（旧GlobeUser） */
+export type FriendPerson = {
+  id: string;
+  name: string;
+  isMe: boolean;
+  location?: string;
+  lastActivityAt?: string; // 最終記録の ISO 時刻（カード表示用）
+  avatarUrl?: string;      // プロフィール画像（data URL）
 };
 
 // ── Timeline / Reactions ──────────────────────────────────────────────────────
