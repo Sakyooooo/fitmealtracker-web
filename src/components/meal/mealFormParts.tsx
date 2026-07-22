@@ -111,45 +111,49 @@ export function NameSuggestions({ form }: { form: MealForm }) {
     );
   }
 
-  if (nameSuggestions.length > 0) {
-    return (
-      <div className="-mt-2 mb-4 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1">候補（タップでカロリーを反映）</p>
-        <ul className="max-h-44 overflow-y-auto divide-y divide-gray-100">
-          {nameSuggestions.map((s) => (
-            <li key={s.key}>
-              <button
-                type="button"
-                onClick={() => pickSuggestion(s)}
-                className="w-full text-left py-2 px-3 hover:bg-green-50 flex justify-between gap-2 items-center"
-              >
-                <span className="text-xs text-gray-700 truncate">{s.label}</span>
-                <span className="text-[11px] text-gray-400 shrink-0">{s.sub}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
-  // 候補が無いとき: AI推定ボタン（既にこの名前でAI推定済みなら出さない）
+  // 候補一覧とAI推定ボタンは併記する。「ジェノベーゼパスタ」→部分一致で
+  // 「パスタ」しか候補に無くても、正確な料理名でAI推定できる選択肢を残すため
+  // (以前は候補が1件でもあるとAIボタンが完全に隠れていた)。
+  // 入力と完全一致する候補が既にあるか、既にこの名前でAI推定済みならAIボタンは省く。
+  const exactMatch = nameSuggestions.some((s) => s.label === q);
   const alreadyAi = basis?.origin === 'ai' && basis.name === q;
-  if (q.length >= 2 && !alreadyAi) {
-    return (
-      <div className="-mt-2 mb-4">
+  const showAiButton = q.length >= 2 && !exactMatch && !alreadyAi;
+
+  if (nameSuggestions.length === 0 && !showAiButton) return null;
+
+  return (
+    <div className="-mt-2 mb-4 space-y-2">
+      {nameSuggestions.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <p className="text-[10px] text-gray-400 px-3 pt-2 pb-1">候補（タップでカロリーを反映）</p>
+          <ul className="max-h-44 overflow-y-auto divide-y divide-gray-100">
+            {nameSuggestions.map((s) => (
+              <li key={s.key}>
+                <button
+                  type="button"
+                  onClick={() => pickSuggestion(s)}
+                  className="w-full text-left py-2 px-3 hover:bg-green-50 flex justify-between gap-2 items-center"
+                >
+                  <span className="text-xs text-gray-700 truncate">{s.label}</span>
+                  <span className="text-[11px] text-gray-400 shrink-0">{s.sub}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {showAiButton && (
         <button
           type="button"
           onClick={runAiEstimate}
           disabled={estimatingName}
           className="w-full py-2.5 border-2 border-dashed border-amber-300 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-60"
         >
-          {estimatingName ? '🤖 AIが推定中…' : `🤖 「${q}」をAIでカロリー推定`}
+          {estimatingName ? '🤖 AIが推定中…' : `🤖 「${q}」を正確にAIでカロリー推定`}
         </button>
-      </div>
-    );
-  }
-  return null;
+      )}
+    </div>
+  );
 }
 
 /** 複数料理ピッカー（multiText がセットされているときのみ表示）。 */

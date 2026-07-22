@@ -8,6 +8,7 @@ import { getMealsByDate, sumCalories, todayString } from '@/lib/stats';
 import { MEAL_BG_URL, BG_OPACITY, HERO_FONT_SIZE } from '@/lib/constants';
 import { MealAnalysisResult } from '@/lib/types';
 import { analyzeWithGemini } from '@/lib/gemini';
+import { normalizeImagePhoto } from '@/lib/imageOrientation';
 import MealCard from '@/components/meal/MealCard';
 import AddMealModal from '@/components/meal/AddMealModal';
 import type { TagFriend } from '@/components/meal/useMealForm';
@@ -50,11 +51,14 @@ export default function MealPage() {
   const [cameraAnalysis, setCameraAnalysis] = useState<MealAnalysisResult | null>(null);
 
   async function handleCameraCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const raw = e.target.files?.[0];
+    if (!raw) return;
     e.target.value = '';
     setCameraAnalyzing(true);
     try {
+      // 横向き撮影などのEXIF回転をピクセルへ焼き込んでからAIへ渡す
+      // （生バイト列のままだとAIが横倒しの画像として誤判定するため）
+      const file = await normalizeImagePhoto(raw);
       const result = await analyzeWithGemini(file);
       setCameraFile(file);
       setCameraAnalysis(result);

@@ -7,6 +7,7 @@ import {
 } from '@/lib/types';
 import { todayString } from '@/lib/stats';
 import { analyzeMealPhotoCached, estimateMealByNameCached } from '@/lib/aiNutrition';
+import { normalizeImagePhoto } from '@/lib/imageOrientation';
 import { type MultiTotal } from '@/components/meal/MultiDishPicker';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
 import { searchFoods } from '@/lib/foodComposition';
@@ -127,9 +128,11 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.files?.[0];
+    if (!raw) return;
+    // 横向き撮影などのEXIF回転をピクセルへ焼き込んでからAI解析・保存に使う
+    const file = await normalizeImagePhoto(raw);
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
     setAnalyzeResult(null);
