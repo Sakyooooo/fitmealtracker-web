@@ -4,6 +4,7 @@ import RestoreGate from '@/components/onboarding/RestoreGate';
 import MigrationBanner from '@/components/migration/MigrationBanner';
 import StoragePersistence from './StoragePersistence';
 import DailyRecapAutoTrigger from '@/components/recap/DailyRecapAutoTrigger';
+import WeeklyGymReviewTrigger from '@/components/friends/WeeklyGymReviewTrigger';
 import MealReminderScheduler from '@/components/notification/MealReminderScheduler';
 import { AppDataProvider } from '@/store/AppDataProvider';
 
@@ -19,6 +20,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       <MigrationBanner />
       <StoragePersistence />
       <DailyRecapAutoTrigger />
+      <WeeklyGymReviewTrigger />
       <MealReminderScheduler />
     </AppDataProvider>
   );

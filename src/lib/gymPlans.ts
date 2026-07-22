@@ -34,6 +34,13 @@ export function currentWeekStart(): string {
   return now.toISOString().slice(0, 10);
 }
 
+/** 先週の月曜日を YYYY-MM-DD で返す（週初めの振り返りポップアップ用） */
+export function previousWeekStart(): string {
+  const d = new Date(`${currentWeekStart()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 /** week_start + index(0..6) の日付文字列 */
 function dateOfIndex(weekStart: string, index: number): string {
   const d = new Date(`${weekStart}T00:00:00Z`);
@@ -109,11 +116,13 @@ export type GymWeekData = {
 };
 
 /**
- * 自分＋フレンドの今週の宣言と実績をまとめて取得する。
+ * 自分＋フレンドの指定週の宣言と実績をまとめて取得する（既定は今週）。
  * 実績は exercises(type='gymSession') の日付から導出（RLSでフレンドの公開行のみ見える）。
  */
-export async function fetchGymWeekData(userIds: string[]): Promise<GymWeekData> {
-  const weekStart = currentWeekStart();
+export async function fetchGymWeekData(
+  userIds: string[],
+  weekStart: string = currentWeekStart(),
+): Promise<GymWeekData> {
   const empty: GymWeekData = { weekStart, plans: {}, doneDays: {} };
   if (!supabaseEnabled || !supabase || userIds.length === 0) return empty;
 
@@ -150,4 +159,24 @@ export async function fetchGymWeekData(userIds: string[]): Promise<GymWeekData> 
   }
 
   return { weekStart, plans, doneDays };
+}
+
+// ── 週の初めの振り返りポップアップ（表示済み管理） ───────────────────────────
+
+const REVIEW_SHOWN_KEY = 'fmt_weekly_gym_review_shown_week';
+
+/** 直近で振り返りポップアップを表示した週の開始日（未表示なら null）。 */
+export function getWeeklyReviewShownWeek(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(REVIEW_SHOWN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setWeeklyReviewShownWeek(weekStart: string): void {
+  try {
+    localStorage.setItem(REVIEW_SHOWN_KEY, weekStart);
+  } catch { /* quota */ }
 }
