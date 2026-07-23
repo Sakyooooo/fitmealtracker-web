@@ -12,6 +12,7 @@ import { type MultiTotal } from '@/components/meal/MultiDishPicker';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
 import { searchFoods } from '@/lib/foodComposition';
 import { searchDishes } from '@/lib/nutritionDb';
+import { guessMealCategory } from '@/lib/recipe';
 import {
   scaleNutrition, basisFromAnalysis, basisFromProduct, basisFromFood, basisFromMyFood, basisFromDish,
 } from '@/lib/portion';
@@ -29,6 +30,10 @@ export function parseNum(s: string): number | null {
 function nowTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+function hourFromTime(t: string): number {
+  return parseInt(t.slice(0, 2), 10);
 }
 
 type SavedMealData = Omit<MealEntry, 'id' | 'photoUri' | 'photoId'> & { photoFile?: File | null };
@@ -50,8 +55,10 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
   const [name, setName] = useState('');
   const [calories, setCalories] = useState('');
   const [date, setDate] = useState(todayString);
-  const [time, setTime] = useState(nowTime);
-  const [category, setCategory] = useState<MealCategory>('朝食');
+  const [time, setTimeRaw] = useState(nowTime);
+  const [category, setCategoryRaw] = useState<MealCategory>(() => guessMealCategory(new Date().getHours()));
+  // カテゴリがまだ時刻追従モードか（区分タブをユーザーが手動選択したら false になり、以後は時刻変更で上書きしない）
+  const categoryAutoRef = useRef(true);
   const [note, setNote] = useState('');
   const [protein, setProtein] = useState('');
   const [fat, setFat] = useState('');
@@ -93,9 +100,24 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
   const [nameError, setNameError] = useState('');
   const [calError, setCalError] = useState('');
 
+  // 時刻入力: 値を更新し、区分がまだ時刻追従モードなら記録時刻から自動で選び直す
+  function setTime(v: string) {
+    setTimeRaw(v);
+    if (categoryAutoRef.current) setCategoryRaw(guessMealCategory(hourFromTime(v)));
+  }
+
+  // 区分タブ: ユーザーが手動選択したら以後は時刻変更で上書きしない
+  function setCategory(cat: MealCategory) {
+    categoryAutoRef.current = false;
+    setCategoryRaw(cat);
+  }
+
   const reset = useCallback(() => {
-    setName(''); setCalories(''); setDate(todayString()); setTime(nowTime());
-    setCategory('朝食'); setNote('');
+    const t = nowTime();
+    setName(''); setCalories(''); setDate(todayString()); setTimeRaw(t);
+    categoryAutoRef.current = true;
+    setCategoryRaw(guessMealCategory(hourFromTime(t)));
+    setNote('');
     setProtein(''); setFat(''); setCarbs('');
     setShowPfc(false); setPhotoFile(null); setTaggedUserIds([]);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
@@ -110,9 +132,15 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
 
   function handleClose() { reset(); onClose(); }
 
-  // カメラ即解析から渡された初期値を補完する
+  // モーダルを開くたびに記録時刻を「今」に合わせ、区分もそれに応じて自動推定し直す
+  // （カメラ即解析から渡された初期値があればそれで上書き補完する）
   useEffect(() => {
     if (!open) return;
+    const t = nowTime();
+    setTimeRaw(t);
+    categoryAutoRef.current = true;
+    setCategoryRaw(guessMealCategory(hourFromTime(t)));
+
     if (initialPhotoFile) {
       setPhotoFile(initialPhotoFile);
       setPhotoPreview(URL.createObjectURL(initialPhotoFile));

@@ -111,7 +111,10 @@ export default function MealPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-white">
+    // ClientLayout の外側ラッパーが固定ナビぶんの padding を既に確保しているため、
+    // min-h-screen を足すと二重に高さを主張し、bodyがスクロール可能になって
+    // 固定ナビがスクロール中にずれる原因になっていた（friends/page.tsxと同じ理由）。
+    <div className="relative bg-white min-h-[calc(100svh_-_3.5rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] md:min-h-screen">
       <div
         className="fixed inset-0 bg-cover bg-center pointer-events-none select-none z-0"
         style={{ backgroundImage: `url(${MEAL_BG_URL})`, opacity: BG_OPACITY }}

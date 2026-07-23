@@ -356,7 +356,12 @@ export default function FriendsPage() {
   );
 
   return (
-    <div className="relative min-h-screen bg-white">
+    // ClientLayout の外側ラッパーが固定ナビぶんの padding
+    // (pb-[calc(5rem+safe-area)] md:pb-0) を既に確保しているため、
+    // ここで min-h-screen を足すと二重に高さを主張してしまい、
+    // body 自体がスクロール可能になって固定ナビがスクロール中にずれる
+    // 原因になっていた。ラッパーの padding ぶんを差し引いた高さにする。
+    <div className="relative bg-white min-h-[calc(100svh_-_3.5rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] md:min-h-screen">
       <div className="relative z-10 flex flex-col" style={{ minHeight }}>
 
         {/* ── ヘッダー ── */}
