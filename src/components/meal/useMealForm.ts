@@ -6,7 +6,7 @@ import {
   FoodCompositionItem, NutritionBasis,
 } from '@/lib/types';
 import { todayString } from '@/lib/stats';
-import { analyzeMealPhotoCached, estimateMealByNameCached } from '@/lib/aiNutrition';
+import { analyzeMealPhotoCached, estimateMealByNameCached, searchAiCache } from '@/lib/aiNutrition';
 import { normalizeImagePhoto } from '@/lib/imageOrientation';
 import { type MultiTotal } from '@/components/meal/MultiDishPicker';
 import { lookupProductByBarcode } from '@/lib/openFoodFacts';
@@ -15,10 +15,20 @@ import { searchDishes } from '@/lib/nutritionDb';
 import { guessMealCategory } from '@/lib/recipe';
 import {
   scaleNutrition, basisFromAnalysis, basisFromProduct, basisFromFood, basisFromMyFood, basisFromDish,
+  basisFromAiCache,
 } from '@/lib/portion';
 import { useMyFoods } from '@/hooks/useMyFoods';
 
-export type NameSuggestion = { key: string; label: string; sub: string; basis: NutritionBasis };
+export type NameSuggestion = {
+  key: string; label: string; sub: string; basis: NutritionBasis;
+  // AIキャッシュに現在の入力テキストと完全一致するキーがあるか（AI推定ボタンを隠す判定に使う）
+  exactAiKey?: boolean;
+};
+
+/** マッチング用の正規化（nutritionDb/aiNutrition と同方針）。 */
+function normalizeKey(s: string): string {
+  return s.toLowerCase().replace(/[\s　・、,，.．。!！?？]/g, '').trim();
+}
 
 export const CATEGORIES: MealCategory[] = ['朝食', '昼食', '夕食', '間食'];
 
@@ -308,9 +318,9 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
 
     const seen = new Set<string>();
     const list: NameSuggestion[] = [];
-    const push = (label: string, sub: string, b: NutritionBasis) => {
+    const push = (label: string, sub: string, b: NutritionBasis, exactAiKey?: boolean) => {
       if (seen.has(label) || list.length >= 8) return;
-      seen.add(label); list.push({ key: label, label, sub, basis: b });
+      seen.add(label); list.push({ key: label, label, sub, basis: b, exactAiKey });
     };
     // 1) 料理DB（牛丼・麻婆豆腐など）
     for (const d of searchDishes(query, 5)) push(d.name, `${d.kcal}kcal / ${d.serving}`, basisFromDish(d));
@@ -320,10 +330,14 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
     }
     setNameSuggestions([...list]); // 同期分を即時表示
 
-    // 3) 成分表（非同期・古いクエリなら破棄）
-    const foods = await searchFoods(query, 5);
+    // 3) 成分表 ＋ AI推定キャッシュ（過去にAI推定済みの料理）を横断（非同期・古いクエリなら破棄）
+    const queryKey = normalizeKey(query);
+    const [foods, aiItems] = await Promise.all([searchFoods(query, 5), searchAiCache(query, 5)]);
     if (nameQueryRef.current !== query) return;
     for (const it of foods) push(it.name, `${it.kcal}kcal / 100g`, basisFromFood(it));
+    for (const a of aiItems) {
+      push(a.name, `${a.kcal}kcal・AI推定済み`, basisFromAiCache(a), a.nameKey === queryKey);
+    }
     setNameSuggestions([...list]);
   }
 

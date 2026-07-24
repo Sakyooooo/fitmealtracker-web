@@ -114,8 +114,9 @@ export function NameSuggestions({ form }: { form: MealForm }) {
   // 候補一覧とAI推定ボタンは併記する。「ジェノベーゼパスタ」→部分一致で
   // 「パスタ」しか候補に無くても、正確な料理名でAI推定できる選択肢を残すため
   // (以前は候補が1件でもあるとAIボタンが完全に隠れていた)。
-  // 入力と完全一致する候補が既にあるか、既にこの名前でAI推定済みならAIボタンは省く。
-  const exactMatch = nameSuggestions.some((s) => s.label === q);
+  // 入力と完全一致する候補が既にある、既にこの名前でAI推定済み、または同じ入力で
+  // 過去にAI推定済み（AIキャッシュのキー完全一致）ならAIボタンは省く。
+  const exactMatch = nameSuggestions.some((s) => s.label === q || s.exactAiKey);
   const alreadyAi = basis?.origin === 'ai' && basis.name === q;
   const showAiButton = q.length >= 2 && !exactMatch && !alreadyAi;
 

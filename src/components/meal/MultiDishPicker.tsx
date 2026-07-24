@@ -5,9 +5,9 @@ import { MyFood, NutritionBasis, FoodCompositionItem } from '@/lib/types';
 import { searchDishes } from '@/lib/nutritionDb';
 import { searchFoods } from '@/lib/foodComposition';
 import {
-  scaleNutrition, basisFromDish, basisFromMyFood, basisFromFood, basisFromAnalysis,
+  scaleNutrition, basisFromDish, basisFromMyFood, basisFromFood, basisFromAnalysis, basisFromAiCache,
 } from '@/lib/portion';
-import { estimateMealByNameCached } from '@/lib/aiNutrition';
+import { estimateMealByNameCached, searchAiCache, type AiCacheItem } from '@/lib/aiNutrition';
 
 type Cand = { label: string; sub: string; basis: NutritionBasis };
 type Row = {
@@ -90,30 +90,45 @@ export default function MultiDishPicker({ initialText, myFoods, onChange }: Prop
     });
     setRows(initial);
 
-    // 成分表（八訂）を非同期で候補に追加（選択は変えない）
+    // 成分表（八訂）＋ AI推定キャッシュ（過去にAI推定済みの料理）を非同期で候補に追加
     comps.forEach((q, idx) => {
-      searchFoods(q, 4).then((foods: FoodCompositionItem[]) => {
-        if (foods.length === 0) return;
-        setRows((prev) => prev.map((r, i) => {
-          if (i !== idx || r.id == null) return r;
-          const seen = new Set(r.candidates.map((c) => c.label));
-          const add: Cand[] = [];
-          for (const it of foods) {
-            if (seen.has(it.name) || r.candidates.length + add.length >= 8) continue;
-            add.push({ label: it.name, sub: `${it.kcal}kcal / 100g`, basis: basisFromFood(it) });
-          }
-          if (add.length === 0) return r;
-          const candidates = [...r.candidates, ...add];
-          // 未選択なら、成分表側に完全一致があるときだけ自動適用（先頭の自動選択はしない）
-          let basis = r.basis;
-          let showCandidates = r.showCandidates;
-          if (!basis) {
-            const exact = candidates.find((c) => normalizeKey(c.label) === normalizeKey(r.query));
-            if (exact) { basis = exact.basis; showCandidates = false; }
-          }
-          return { ...r, candidates, basis, showCandidates };
-        }));
-      }).catch(() => {});
+      const qKey = normalizeKey(q);
+      Promise.all([searchFoods(q, 4), searchAiCache(q, 4)])
+        .then(([foods, aiItems]: [FoodCompositionItem[], AiCacheItem[]]) => {
+          if (foods.length === 0 && aiItems.length === 0) return;
+          setRows((prev) => prev.map((r, i) => {
+            if (i !== idx || r.id == null) return r;
+            const seen = new Set(r.candidates.map((c) => c.label));
+            const add: Cand[] = [];
+            for (const it of foods) {
+              if (seen.has(it.name) || r.candidates.length + add.length >= 8) continue;
+              seen.add(it.name);
+              add.push({ label: it.name, sub: `${it.kcal}kcal / 100g`, basis: basisFromFood(it) });
+            }
+            for (const a of aiItems) {
+              if (seen.has(a.name) || r.candidates.length + add.length >= 8) continue;
+              seen.add(a.name);
+              add.push({ label: a.name, sub: `${a.kcal}kcal・AI推定済み`, basis: basisFromAiCache(a) });
+            }
+            if (add.length === 0) return r;
+            const candidates = [...r.candidates, ...add];
+            // 未選択なら自動適用する。同じ料理名でAI推定済み（キー完全一致）を最優先、
+            // 無ければ成分表側の完全一致（先頭の自動選択はしない）。
+            let basis = r.basis;
+            let showCandidates = r.showCandidates;
+            if (!basis) {
+              const exactAi = aiItems.find((a) => a.nameKey === qKey);
+              if (exactAi) {
+                basis = basisFromAiCache(exactAi);
+                showCandidates = false;
+              } else {
+                const exact = candidates.find((c) => normalizeKey(c.label) === normalizeKey(r.query));
+                if (exact) { basis = exact.basis; showCandidates = false; }
+              }
+            }
+            return { ...r, candidates, basis, showCandidates };
+          }));
+        }).catch(() => {});
     });
   }, [initialText, myFoods]);
 
@@ -165,6 +180,10 @@ export default function MultiDishPicker({ initialText, myFoods, onChange }: Prop
       {rows.map((r) => {
         const v = r.basis ? scaleNutrition(r.basis) : null;
         const unit = r.basis?.unit;
+        // 候補に完全一致が無ければ、部分一致しかない/候補が無いのどちらでもAI推定を選択肢として残す
+        // （以前は候補が1件でもあるとAI推定が完全に隠れ、微妙に違う料理名のとき融通が利かなかった）
+        const exactMatch = r.candidates.some((c) => normalizeKey(c.label) === normalizeKey(r.query));
+        const showAiChip = !exactMatch;
         return (
           <div key={r.id} className="bg-blue-50 border border-blue-200 rounded-xl p-3">
             <div className="flex items-center justify-between gap-2 mb-1">
@@ -191,14 +210,14 @@ export default function MultiDishPicker({ initialText, myFoods, onChange }: Prop
                   <span>{unit === 'serving' ? `${r.basis.quantity} ${r.basis.unitLabel}` : `${r.basis.quantity} g`}</span>
                   <button type="button" onClick={() => setRow(r.id, (x) => ({ showCandidates: !x.showCandidates }))}
                     className="font-bold underline decoration-dotted">
-                    {r.candidates.length > 0 ? '候補を変更' : ''}
+                    {r.candidates.length > 0 || showAiChip ? '候補を変更' : ''}
                   </button>
                 </div>
               </>
             )}
 
-            {/* 候補リスト（未選択 or 変更時） */}
-            {(r.showCandidates || !r.basis) && r.candidates.length > 0 && (
+            {/* 候補リスト（未選択 or 変更時）＋ 完全一致が無ければAI推定も選択肢の一つとして並べる */}
+            {(r.showCandidates || !r.basis) && (r.candidates.length > 0 || showAiChip) && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {r.candidates.map((c) => {
                   const active = r.basis?.name === c.label;
@@ -211,15 +230,17 @@ export default function MultiDishPicker({ initialText, myFoods, onChange }: Prop
                     </button>
                   );
                 })}
+                {showAiChip && (
+                  <button type="button" onClick={() => runRowAi(r.id, r.query)} disabled={r.aiLoading}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors disabled:opacity-60 ${
+                      r.basis?.origin === 'ai'
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'border-dashed border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                    }`}>
+                    {r.aiLoading ? '🤖 推定中…' : r.aiTried ? '🤖 もう一度AI推定' : '🤖 AIで推定'}
+                  </button>
+                )}
               </div>
-            )}
-
-            {/* 候補なし → AI推定 */}
-            {!r.basis && r.candidates.length === 0 && (
-              <button type="button" onClick={() => runRowAi(r.id, r.query)} disabled={r.aiLoading}
-                className="mt-1 w-full py-2 border-2 border-dashed border-amber-300 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 disabled:opacity-60">
-                {r.aiLoading ? '🤖 推定中…' : r.aiTried ? '🤖 もう一度AIで推定' : `🤖 「${r.query}」をAIで推定`}
-              </button>
             )}
           </div>
         );

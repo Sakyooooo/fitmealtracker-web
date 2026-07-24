@@ -33,6 +33,48 @@ function isUsable(r: MealAnalysisResult): boolean {
   return r.estimatedCalories != null && r.estimatedCalories > 0;
 }
 
+/** AIキャッシュの1件（候補表示用）。 */
+export type AiCacheItem = {
+  nameKey: string; // 保存時に使った検索キー（= 元の入力テキストの正規化）
+  name: string;    // AIが返した料理名（入力テキストと異なることがある）
+  kcal: number;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+  serving: string | null;
+};
+
+/**
+ * 料理名の部分一致でAIキャッシュを検索する（食事名サジェスト・複数料理ピッカー用）。
+ * これにより、一度AI推定した料理は次回以降 AIボタンを押さなくても候補に出てくる。
+ */
+export async function searchAiCache(query: string, limit: number): Promise<AiCacheItem[]> {
+  if (!supabaseEnabled || !supabase) return [];
+  const key = normalizeKey(query);
+  if (key.length < 2) return [];
+  try {
+    const { data, error } = await supabase
+      .from('ai_nutrition_cache')
+      .select('name_key, name, kcal, protein, fat, carbs, serving')
+      .ilike('name_key', `%${key}%`)
+      .order('hits', { ascending: false })
+      .limit(limit);
+    if (error || !data) return [];
+    return data.map((d) => ({
+      nameKey: d.name_key as string,
+      name: (d.name as string) ?? query,
+      kcal: Number(d.kcal),
+      protein: d.protein == null ? null : Number(d.protein),
+      fat: d.fat == null ? null : Number(d.fat),
+      carbs: d.carbs == null ? null : Number(d.carbs),
+      serving: (d.serving as string | null) ?? null,
+    }));
+  } catch (e) {
+    console.warn('[aiNutrition] searchAiCache', e);
+    return [];
+  }
+}
+
 /** 料理名でキャッシュを引く。ヒットすれば MealAnalysisResult を返す。 */
 async function fetchCached(name: string): Promise<MealAnalysisResult | null> {
   if (!supabaseEnabled || !supabase) return null;

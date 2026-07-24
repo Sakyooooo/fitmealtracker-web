@@ -6,6 +6,7 @@ import {
   NutritionBasis,
 } from './types';
 import { NutritionEntry } from './nutritionDb';
+import { type AiCacheItem } from './aiNutrition';
 
 const round1 = (x: number | null): number | null =>
   x == null ? null : Math.round(x * 10) / 10;
@@ -83,6 +84,18 @@ export function basisFromFood(item: FoodCompositionItem): NutritionBasis {
     unitLabel: 'g',
     quantity: 100,
     origin: 'composition',
+  };
+}
+
+/** AIキャッシュ（過去にAI推定済みの料理）を基準量にする。 */
+export function basisFromAiCache(item: AiCacheItem): NutritionBasis {
+  return {
+    name: item.name,
+    base: { kcal: item.kcal, p: item.protein, f: item.fat, c: item.carbs },
+    unit: 'serving',
+    unitLabel: item.serving ?? '人前',
+    quantity: 1,
+    origin: 'ai',
   };
 }
 
