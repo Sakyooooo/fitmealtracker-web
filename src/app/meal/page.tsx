@@ -6,8 +6,6 @@ import { useSettings } from '@/hooks/useSettings';
 import { useFriends } from '@/hooks/useFriends';
 import { getMealsByDate, sumCalories, todayString } from '@/lib/stats';
 import { MEAL_BG_URL, BG_OPACITY, HERO_FONT_SIZE } from '@/lib/constants';
-import { MealAnalysisResult } from '@/lib/types';
-import { analyzeWithGemini } from '@/lib/gemini';
 import { normalizeImagePhoto } from '@/lib/imageOrientation';
 import MealCard from '@/components/meal/MealCard';
 import AddMealModal from '@/components/meal/AddMealModal';
@@ -44,34 +42,32 @@ export default function MealPage() {
     [friends],
   );
 
-  // ── Camera instant-analyze ────────────────────────────────────────────────────
+  // ── Camera capture ────────────────────────────────────────────────────────────
+  // 撮影したら詳細記録フォームを写真付きで開くだけ（AI推定は走らせない）。
+  // カロリー推定が必要なときはフォーム内の「✨ 写真でカロリーを推定」を押す。
   const cameraRef = useRef<HTMLInputElement>(null);
-  const [cameraAnalyzing, setCameraAnalyzing] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraFile, setCameraFile] = useState<File | null>(null);
-  const [cameraAnalysis, setCameraAnalysis] = useState<MealAnalysisResult | null>(null);
 
   async function handleCameraCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.files?.[0];
     if (!raw) return;
     e.target.value = '';
-    setCameraAnalyzing(true);
+    setCameraLoading(true);
     try {
-      // 横向き撮影などのEXIF回転をピクセルへ焼き込んでからAIへ渡す
-      // （生バイト列のままだとAIが横倒しの画像として誤判定するため）
+      // 横向き撮影などのEXIF回転をピクセルへ焼き込んでおく
+      // （生バイト列のままだと後段のAI解析が横倒しの画像として誤判定するため）
       const file = await normalizeImagePhoto(raw);
-      const result = await analyzeWithGemini(file);
       setCameraFile(file);
-      setCameraAnalysis(result);
       setShowModal(true);
     } finally {
-      setCameraAnalyzing(false);
+      setCameraLoading(false);
     }
   }
 
   function handleModalClose() {
     setShowModal(false);
     setCameraFile(null);
-    setCameraAnalysis(null);
   }
 
   // ── Goal setting ─────────────────────────────────────────────────────────────
@@ -175,7 +171,7 @@ export default function MealPage() {
           {/* CTA */}
           <div className="flex flex-col items-center pb-6 gap-4">
             <div className="flex items-center gap-8">
-              {/* Left — camera: 撮影 → 即解析 → モーダル補完 */}
+              {/* Left — camera: 撮影 → 写真付きで詳細記録フォームを開く */}
               <input
                 ref={cameraRef}
                 type="file"
@@ -187,13 +183,13 @@ export default function MealPage() {
               <button
                 type="button"
                 onClick={() => cameraRef.current?.click()}
-                disabled={cameraAnalyzing}
+                disabled={cameraLoading}
                 className="w-14 h-14 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200
                            flex items-center justify-center hover:bg-white transition-colors shadow-sm
                            disabled:opacity-50"
-                title="カメラで撮影して解析"
+                title="カメラで撮影して記録"
               >
-                {cameraAnalyzing ? (
+                {cameraLoading ? (
                   <span className="animate-spin text-base">⏳</span>
                 ) : (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -347,7 +343,6 @@ export default function MealPage() {
           onClose={handleModalClose}
           onSave={(data) => addMeal(data)}
           initialPhotoFile={cameraFile}
-          initialAnalysis={cameraAnalysis}
           friends={tagFriends}
         />
       </div>

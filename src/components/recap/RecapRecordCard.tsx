@@ -30,7 +30,8 @@ export default function RecapRecordCard({ rec }: { rec: RecapRecord }) {
       >
         {hasPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={rec.photoUrl} alt={rec.name} className="absolute inset-0 w-full h-full object-cover" />
+          <img src={rec.photoUrl} alt={rec.name} className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition: `${rec.photoFocusX ?? 50}% ${rec.photoFocusY ?? 50}%` }} />
         ) : (
           <span className="select-none" style={{ fontSize: 46, opacity: 0.55 }}>
             {isMeal ? categoryEmoji(rec.category) : '🏋️'}

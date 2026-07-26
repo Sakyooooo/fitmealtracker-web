@@ -258,6 +258,8 @@ export default function FriendsPage() {
       fat: item.fat ?? undefined,
       carbs: item.carbs ?? undefined,
       photoUrl: item.photoUrl ?? undefined,
+      photoFocusX: item.photoFocusX ?? undefined,
+      photoFocusY: item.photoFocusY ?? undefined,
       sharedFromMealId: item.id,
     });
   }, [addMeal, markShared]);

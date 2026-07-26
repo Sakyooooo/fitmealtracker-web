@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic';
 import { type MealForm, type TagFriend, CATEGORIES } from './useMealForm';
 import { Field, NameSuggestions, MultiPickerSlot, FriendTagPanel, ORIGIN_LABEL } from './mealFormParts';
+import PhotoFramer from './PhotoFramer';
 
 const BarcodeScanner = dynamic(() => import('@/components/meal/BarcodeScanner'), { ssr: false });
 
@@ -101,21 +102,60 @@ export default function DetailMealForm({ form, friends = [] }: { form: MealForm;
 
 // ── 写真＋AI解析 ──────────────────────────────────────────────────────────────
 function PhotoPanel({ form }: { form: MealForm }) {
-  const { photoPreview, fileRef, handlePhotoChange, handleAnalyze, analyzing, analyzeResult, name, setName, setNameError } = form;
+  const {
+    photoPreview, fileRef, handlePhotoChange, handleAnalyze, analyzing, analyzeResult,
+    name, setName, setNameError, photoFocus, setPhotoFocus, framingPhoto, setFramingPhoto,
+  } = form;
   return (
     <div className="mb-4">
       <label className="text-sm font-semibold text-gray-600 block mb-2">写真（任意）</label>
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
       {photoPreview ? (
         <div className="space-y-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photoPreview}
-            alt="preview"
-            className="w-full h-40 object-cover rounded-xl cursor-pointer"
-            onClick={() => fileRef.current?.click()}
-          />
-          <p className="text-xs text-gray-400 text-center">タップで変更</p>
+          {/* タイムラインと同じ 4:3 で表示するので、ここでの見え方がそのまま投稿の見え方になる */}
+          {framingPhoto ? (
+            <>
+              <PhotoFramer
+                src={photoPreview}
+                focusX={photoFocus.x}
+                focusY={photoFocus.y}
+                onChange={setPhotoFocus}
+              />
+              <button
+                type="button"
+                onClick={() => setFramingPhoto(false)}
+                className="w-full py-2 bg-gray-900 text-white rounded-xl text-xs font-black"
+              >
+                画角を確定
+              </button>
+            </>
+          ) : (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoPreview}
+                alt="preview"
+                className="w-full aspect-[4/3] object-cover rounded-xl"
+                style={{ objectPosition: `${photoFocus.x}% ${photoFocus.y}%` }}
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="flex-1 py-2 border border-gray-200 text-gray-500 rounded-xl text-xs font-bold hover:bg-gray-50"
+                >
+                  写真を変更
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFramingPhoto(true)}
+                  className="flex-1 py-2 border border-gray-200 text-gray-500 rounded-xl text-xs font-bold hover:bg-gray-50"
+                >
+                  🖼 画角を調整
+                </button>
+              </div>
+            </>
+          )}
           <button
             onClick={handleAnalyze}
             disabled={analyzing}

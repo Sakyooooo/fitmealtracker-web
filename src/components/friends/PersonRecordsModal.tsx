@@ -32,7 +32,8 @@ function Thumb({ item }: { item: TimelineItem }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={item.photoUrl} alt={item.name}
-        className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
+        className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
+        style={{ objectPosition: `${item.photoFocusX ?? 50}% ${item.photoFocusY ?? 50}%` }} />
     );
   }
   return (

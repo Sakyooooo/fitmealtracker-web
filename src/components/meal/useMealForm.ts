@@ -18,6 +18,7 @@ import {
   basisFromAiCache,
 } from '@/lib/portion';
 import { useMyFoods } from '@/hooks/useMyFoods';
+import { FOCUS_CENTER } from '@/components/meal/PhotoFramer';
 
 export type NameSuggestion = {
   key: string; label: string; sub: string; basis: NutritionBasis;
@@ -76,6 +77,10 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
   const [showPfc, setShowPfc] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  // カード表示時の画角（object-position 相当の%）。既定は中央＝従来と同じ見え方で、
+  // 「画角を調整」を開いたときだけ変更できる。
+  const [photoFocus, setPhotoFocus] = useState({ x: FOCUS_CENTER, y: FOCUS_CENTER });
+  const [framingPhoto, setFramingPhoto] = useState(false);
   const [taggedUserIds, setTaggedUserIds] = useState<string[]>([]); // 一緒に食べたフレンド
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeResult, setAnalyzeResult] = useState<MealAnalysisResult | null>(null);
@@ -130,6 +135,7 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
     setNote('');
     setProtein(''); setFat(''); setCarbs('');
     setShowPfc(false); setPhotoFile(null); setTaggedUserIds([]);
+    setPhotoFocus({ x: FOCUS_CENTER, y: FOCUS_CENTER }); setFramingPhoto(false);
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhotoPreview(null); setAnalyzeResult(null);
     setShowBarcode(false); setBarcodeInput(''); setProductResult(null);
@@ -173,6 +179,9 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
     const file = await normalizeImagePhoto(raw);
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
+    // 別の写真に差し替えたら画角は中央に戻す（前の写真の位置は無意味なため）
+    setPhotoFocus({ x: FOCUS_CENTER, y: FOCUS_CENTER });
+    setFramingPhoto(false);
     setAnalyzeResult(null);
   }
 
@@ -397,6 +406,9 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
       date,
       note: note.trim() || undefined,
       photoFile,
+      // 中央のままなら保存しない（未指定＝中央として扱われるため）
+      photoFocusX: photoFile && photoFocus.x !== FOCUS_CENTER ? photoFocus.x : undefined,
+      photoFocusY: photoFile && photoFocus.y !== FOCUS_CENTER ? photoFocus.y : undefined,
       protein: !isNaN(proteinVal) && proteinVal >= 0 ? proteinVal : undefined,
       fat: !isNaN(fatVal) && fatVal >= 0 ? fatVal : undefined,
       carbs: !isNaN(carbsVal) && carbsVal >= 0 ? carbsVal : undefined,
@@ -410,6 +422,7 @@ export function useMealForm({ open, onClose, onSave, initialPhotoFile, initialAn
     // state
     name, calories, date, time, category, note, protein, fat, carbs,
     showPfc, photoPreview, analyzing, analyzeResult, fileRef, taggedUserIds, setTaggedUserIds,
+    photoFocus, setPhotoFocus, framingPhoto, setFramingPhoto,
     showBarcode, barcodeInput, productLoading, productResult, productError, barcodeForRegister,
     myFoods, showFoodSearch, foodQuery, foodResults, showMyFoods, basis, savedMsg,
     nameSuggestions, estimatingName, multiText, nameError, calError,

@@ -11,6 +11,11 @@ export type MealEntry = {
   photoId?: string;
   photoUri?: string;
   photoUrl?: string; // Supabase Storage 公開URL（同期後にセット）
+  // 写真の表示位置（object-position 相当の 0-100%）。カードは 4:3 に切り抜いて
+  // 表示するため、縦長写真などで料理が見切れる場合に投稿時へ調整できる。
+  // undefined = 中央（従来と同じ見え方）。写真の原本は切り抜かず保持する。
+  photoFocusX?: number;
+  photoFocusY?: number;
   protein?: number;  // g
   fat?: number;      // g
   carbs?: number;    // g
@@ -238,6 +243,8 @@ export type TimelineItem = {
   fat?: number | null;
   carbs?: number | null;
   photoUrl?: string | null; // 食事写真の公開URL
+  photoFocusX?: number | null; // 写真の表示位置 0-100%（null=中央）
+  photoFocusY?: number | null;
   // 食事の共有（タグ付け）
   taggedMe?: boolean;        // 自分がこの投稿にタグ付けされているか
   alreadyShared?: boolean;   // 自分が既にこの投稿をシェア済みか

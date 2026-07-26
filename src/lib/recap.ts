@@ -42,6 +42,8 @@ export type RecapMealRecord = {
   carbs: number | null;
   note?: string;
   photoUrl?: string;
+  photoFocusX?: number;
+  photoFocusY?: number;
 };
 
 export type RecapExerciseRecord = {
@@ -195,6 +197,8 @@ export function buildRecapData(
       carbs: m.carbs ?? null,
       note: m.note,
       photoUrl: m.photoUri ?? m.photoUrl ?? undefined,
+      photoFocusX: m.photoFocusX,
+      photoFocusY: m.photoFocusY,
     }))
     .sort((a, b) => toMinutes(a.time) - toMinutes(b.time));
 

@@ -18,6 +18,12 @@ function isMealTagsColumnError(msg: string): boolean {
   return msg.includes('tagged_user_ids') || msg.includes('shared_from_meal_id');
 }
 
+// 017_meal_photo_focus.sql 未適用の環境向け。上と同じ方針で写真の画角のみ無効化する。
+let mealFocusUnavailable = false;
+function isMealFocusColumnError(msg: string): boolean {
+  return msg.includes('photo_focus_x') || msg.includes('photo_focus_y');
+}
+
 function toSupaMeal(m: MealEntry, userId: string) {
   const base = {
     id:         m.id,
@@ -34,9 +40,14 @@ function toSupaMeal(m: MealEntry, userId: string) {
     photo_url:  m.photoUrl ?? null,
     is_public:  true,
   };
-  if (mealTagsUnavailable) return base;
-  return {
+  const withFocus = mealFocusUnavailable ? base : {
     ...base,
+    photo_focus_x: m.photoFocusX ?? null,
+    photo_focus_y: m.photoFocusY ?? null,
+  };
+  if (mealTagsUnavailable) return withFocus;
+  return {
+    ...withFocus,
     tagged_user_ids:     m.taggedUserIds ?? [],
     shared_from_meal_id: m.sharedFromMealId ?? null,
   };
@@ -79,10 +90,15 @@ export async function sbUpsertMeal(meal: MealEntry): Promise<void> {
   if (!supabaseEnabled || !supabase) return;
   const userId = await ensureAuthUserId();
   let { error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId));
-  // 共有列が未作成なら共有フィールドを外して1回だけリトライ（食事本体は保存する）
+  // 追加列が未作成ならその分だけ外してリトライ（食事本体は必ず保存する）
   if (error && !mealTagsUnavailable && isMealTagsColumnError(error.message)) {
     mealTagsUnavailable = true;
     console.warn('[meals] tagged_user_ids/shared_from_meal_id 列が無いため食事シェア機能の同期を無効化します（supabase/migrations/011_meal_tags_share.sql を実行すると有効化）');
+    ({ error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId)));
+  }
+  if (error && !mealFocusUnavailable && isMealFocusColumnError(error.message)) {
+    mealFocusUnavailable = true;
+    console.warn('[meals] photo_focus_x/photo_focus_y 列が無いため写真の画角の同期を無効化します（supabase/migrations/017_meal_photo_focus.sql を実行すると有効化）');
     ({ error } = await supabase.from('meals').upsert(toSupaMeal(meal, userId)));
   }
   if (error) console.error('[supabaseRepository] upsertMeal:', error.message);
@@ -116,6 +132,8 @@ export async function sbFetchMyMeals(): Promise<MealEntry[] | null> {
     carbs:    r.carbs as number | undefined,
     // クラウド復元では写真は photoUri(端末ローカル)ではなく、Storageの公開URLで復元する
     photoUrl: (r.photo_url as string | null) ?? undefined,
+    photoFocusX: (r.photo_focus_x as number | null) ?? undefined,
+    photoFocusY: (r.photo_focus_y as number | null) ?? undefined,
     taggedUserIds:    (r.tagged_user_ids as string[] | null) ?? undefined,
     sharedFromMealId: (r.shared_from_meal_id as string | null) ?? undefined,
   }));
@@ -513,12 +531,16 @@ export async function fetchTimeline(
   if (!supabaseEnabled || !supabase || friendIds.length === 0) return [];
 
   try {
-    // 食事（共有列を含めて取得。列未作成なら共有情報なしでリトライ）
+    // 食事（追加列を含めて取得。列未作成ならその分を外してリトライ）
     const baseMealCols = 'id, user_id, name, calories, category, date, time, note, protein, fat, carbs, photo_url, created_at, users(display_name, friend_code, avatar_url)';
-    const tagMealCols = `${baseMealCols}, tagged_user_ids, shared_from_meal_id`;
+    const mealCols = () => [
+      baseMealCols,
+      mealTagsUnavailable  ? null : 'tagged_user_ids, shared_from_meal_id',
+      mealFocusUnavailable ? null : 'photo_focus_x, photo_focus_y',
+    ].filter(Boolean).join(', ');
     const mealsQuery = () => supabase!
       .from('meals')
-      .select(mealTagsUnavailable ? baseMealCols : tagMealCols)
+      .select(mealCols())
       .in('user_id', friendIds)
       .eq('is_public', true)
       .order('created_at', { ascending: false })
@@ -526,6 +548,10 @@ export async function fetchTimeline(
     let { data: mealsData, error: mealsError } = await mealsQuery();
     if (mealsError && !mealTagsUnavailable && isMealTagsColumnError(mealsError.message)) {
       mealTagsUnavailable = true;
+      ({ data: mealsData, error: mealsError } = await mealsQuery());
+    }
+    if (mealsError && !mealFocusUnavailable && isMealFocusColumnError(mealsError.message)) {
+      mealFocusUnavailable = true;
       ({ data: mealsData, error: mealsError } = await mealsQuery());
     }
     if (mealsError) console.error('[fetchTimeline] meals:', mealsError.message);
@@ -619,6 +645,8 @@ export async function fetchTimeline(
         fat:          m.fat as number | null,
         carbs:        m.carbs as number | null,
         photoUrl:     m.photo_url as string | null,
+        photoFocusX:  (m.photo_focus_x as number | null) ?? null,
+        photoFocusY:  (m.photo_focus_y as number | null) ?? null,
         note:         m.note as string | null,
         created_at:   m.created_at as string,
         reactions:    reactionsFor(id),

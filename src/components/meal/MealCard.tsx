@@ -26,6 +26,7 @@ export default function MealCard({ meal, onDelete }: Props) {
           src={meal.photoUri ?? meal.photoUrl ?? undefined}
           alt={meal.name}
           className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+          style={{ objectPosition: `${meal.photoFocusX ?? 50}% ${meal.photoFocusY ?? 50}%` }}
         />
       )}
       <div className="flex-1 min-w-0">

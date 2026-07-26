@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { TimelineItem, ReactionEmoji } from '@/lib/types';
+import PhotoLightbox from './PhotoLightbox';
 
 const EMOJIS: ReactionEmoji[] = ['💪', '🔥', '👍', '🎉'];
 const ACCENT = '#AB47BC';
@@ -60,6 +61,12 @@ export default function TimelineCard({ item, onReact, onAddComment, onDeleteComm
 
   const [commentText, setCommentText] = useState('');
   const [showComments, setShowComments] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  // 投稿時に決めた画角（未指定は中央＝従来と同じ見え方）。カードは 4:3 に切り抜くため、
+  // 全体を見たいときは写真をタップして全画面表示する。
+  const focusX = item.photoFocusX ?? 50;
+  const focusY = item.photoFocusY ?? 50;
 
   function submitComment(e: React.FormEvent) {
     e.preventDefault();
@@ -75,13 +82,29 @@ export default function TimelineCard({ item, onReact, onAddComment, onDeleteComm
       <div className="relative w-full aspect-[4/3] bg-gray-100">
         {item.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.photoUrl} alt={item.name} className="absolute inset-0 w-full h-full object-cover" />
+          <img
+            src={item.photoUrl}
+            alt={item.name}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition: `${focusX}% ${focusY}%` }}
+          />
         ) : (
           <Placeholder isMeal={isMeal} />
         )}
 
+        {/* 写真タップで全画面（写真の全体を見る）。上下のオーバーレイは
+            pointer-events-none にしてタップがこのボタンへ抜けるようにしている。 */}
+        {item.photoUrl && (
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            aria-label="写真を全画面で見る"
+            className="absolute inset-0 w-full h-full"
+          />
+        )}
+
         {/* 上：ユーザー情報 */}
-        <div className="absolute top-0 inset-x-0 flex items-center gap-2 p-3
+        <div className="absolute top-0 inset-x-0 flex items-center gap-2 p-3 pointer-events-none
                         bg-gradient-to-b from-black/45 to-transparent">
           <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ring-2 ring-white/60 overflow-hidden"
             style={{ background: ACCENT }}>
@@ -103,7 +126,7 @@ export default function TimelineCard({ item, onReact, onAddComment, onDeleteComm
         </div>
 
         {/* 下：タイトル＋カロリー */}
-        <div className="absolute bottom-0 inset-x-0 p-3 pt-8 bg-gradient-to-t from-black/65 to-transparent">
+        <div className="absolute bottom-0 inset-x-0 p-3 pt-8 pointer-events-none bg-gradient-to-t from-black/65 to-transparent">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <p className="text-lg font-black text-white drop-shadow truncate">{item.name}</p>
@@ -124,6 +147,16 @@ export default function TimelineCard({ item, onReact, onAddComment, onDeleteComm
             </div>
           </div>
         </div>
+
+        {/* タップで全画面になることを示すヒント */}
+        {item.photoUrl && (
+          <span className="absolute top-14 right-3 w-7 h-7 rounded-full bg-black/40 backdrop-blur
+                           flex items-center justify-center pointer-events-none">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </span>
+        )}
       </div>
 
       {/* ── 下部：栄養・ノート・リアクション・コメント ── */}
@@ -259,6 +292,12 @@ export default function TimelineCard({ item, onReact, onAddComment, onDeleteComm
           </div>
         )}
       </div>
+
+      <PhotoLightbox
+        src={lightboxOpen ? (item.photoUrl ?? null) : null}
+        alt={item.name}
+        onClose={() => setLightboxOpen(false)}
+      />
     </article>
   );
 }

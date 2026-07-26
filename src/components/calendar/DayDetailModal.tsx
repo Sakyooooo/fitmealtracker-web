@@ -59,7 +59,8 @@ export default function DayDetailModal({
               <div key={m.id} className="flex gap-2.5 bg-gray-50 rounded-xl p-2.5">
                 {m.photoUri && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.photoUri} alt={m.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                  <img src={m.photoUri} alt={m.name} className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                    style={{ objectPosition: `${m.photoFocusX ?? 50}% ${m.photoFocusY ?? 50}%` }} />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] text-gray-400 font-medium">
