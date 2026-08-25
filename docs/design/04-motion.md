@@ -65,7 +65,7 @@ FitMealTracker は **1 日に何度も開き、1 回の滞在が短い道具**�
   （`transition-transform` / `transition-colors` / `transition-opacity`）
 - `will-change` は **アニメーション直前に付けて終わったら外す**。常時付けっぱなしにしない
 - 大きな `backdrop-filter` / `blur` はモバイルで重い。オーバーレイの背景は `bg-black/40` の単純な半透明でよい
-- 画像・3D（Three.js のアバター）は **画面外では止める**（`IntersectionObserver` でループを停止）
+- 画像・3D（Three.js のアバター）は **画面外では止める**（`IntersectionObserver` でループを停止）→ [08-3d.md](./08-3d.md)
 - リストの `key` を安定させる。key が変わると React が要素を作り直してアニメーションが飛ぶ
 
 ---

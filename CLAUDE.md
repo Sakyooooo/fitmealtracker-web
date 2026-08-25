@@ -37,5 +37,6 @@ UI/UX rules live in `docs/design/`. Read them before building or changing any sc
 - `docs/design/05-accessibility.md` — WCAG 2.2 AA: 4.5:1 contrast, 44px targets, visible focus.
 - `docs/design/06-checklist.md` — run through this before committing UI changes.
 - `docs/design/07-audit-backlog.md` — known gaps; fix the ones in files you touch.
+- `docs/design/08-3d.md` — Three.js rules: asset budget, `frameloop` gating, reduced-motion, WebGL fallback.
 
 Do not write raw hex colors in components — use the tokens.

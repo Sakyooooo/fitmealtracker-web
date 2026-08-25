@@ -24,6 +24,11 @@
 | `text-[10px]` 以下 | 71 箇所 | 11px 以上 | 低 |
 | `text-gray-300` をテキストに使用 | 45 箇所 | `gray-400` 以上 | 低 |
 | `font-semibold` と `font-bold` の混在 | 20 / 31 | `font-bold` に統一 | 低 |
+| 未使用の GLB アセット | 14 個中 12 個が未参照（約 3.3MB） | 削除 | 中 |
+| `exercise_avatar.glb` のサイズ | 3.5MB | 500KB 以下 | 中 |
+| 3D の `prefers-reduced-motion` 分岐 | **未対応** | 静止ポーズにする | 中 |
+| 3D の画面外・非アクティブ時の停止 | **未対応**（`frameloop` 未指定） | `demand` / `never` に切替 | 中 |
+| `<Canvas>` の `aria-hidden` | 未設定 | 装飾なら付与 | 低 |
 
 ---
 
@@ -140,7 +145,68 @@ PWA では OS ダイアログが文脈から浮く。特に **記録の削除は
 
 ---
 
-## 5. 進め方の提案
+## 5. 3D / Three.js（→ 08-3d.md）
+
+対象: `AvatarViewer.tsx` / `ExerciseAvatarStage.tsx` / `GymSessionCard.tsx`。
+
+### 良い状態（維持する）
+
+- `GymSessionCard.tsx` が `dynamic(..., { ssr: false })` で遅延読み込みしている
+- `MeshMatcapMaterial` + `vertexColors` でライトを置かず、matcap を Canvas で生成している
+  （**テクスチャ資産ゼロ**。ThreeUI のプロシージャル志向と同じ方向）
+- 影は `ContactShadows` のみで、シャドウマップを有効にしていない
+- 種目名・回数がテキストでも表示されていて、3D にしか無い情報になっていない
+
+### 3D-1. 未使用の GLB が 12 個（優先度: 中）
+
+`public/models/` に GLB が 14 ファイル・合計 **7.2MB** あるが、`src/` から参照されているのは
+`Avatar.glb`（356KB）と `exercise_avatar.glb`（3.5MB）の 2 つだけ。
+
+未参照: `chibi_active` / `chibi_avatar` / `chibi_casual` / `chibi_standard` / `chibi_themed` /
+`earth_lowpoly` / `earth_lowpoly_mobile` / `earth_textured` / `low_poly_earth` /
+`fitness_avatar_complete` / `mannequin_avatar` / `statues`（約 3.3MB）
+
+`public/` の中身はビルド成果物にそのまま入る。**削除するか、`docs/reference/` 相当の場所へ退避する。**
+（`earth_*` 系は `types.ts` の「旧 GlobeUser」というコメントから、削除された地球儀機能の残骸と思われる）
+
+### 3D-2. `exercise_avatar.glb` が 3.5MB（優先度: 中）
+
+08-3d.md §3.2 の予算（1 ファイル 500KB 以下）の 7 倍。ジムセッション開始時に毎回これを取りに行く。
+
+**対応**: Draco / meshopt 圧縮をかける。それでも落ちなければ、
+`Avatar.glb`（356KB）と同じ作り方に寄せられないかを検討する。
+
+### 3D-3. `prefers-reduced-motion` の分岐が無い（優先度: 中）
+
+CSS の一括抑制（04-motion.md §6）は WebGL のアニメーションループを止められない。
+アバターのクリップ再生を JS で分岐し、静止ポーズにする必要がある。
+→ 08-3d.md §5 にコピペ可能な実装あり
+
+### 3D-4. 画面外・非アクティブ時に描画が止まらない（優先度: 中）
+
+両方の `<Canvas>` で `frameloop` が未指定のため既定の `'always'`。
+スクロールで画面外に出ても、タブが裏に回っても回り続ける。PWA ではバッテリー消費に直結する。
+
+**対応**: `IntersectionObserver` と `document.visibilityState` を見て
+`frameloop` を `'always'` / `'never'` で切り替える。→ 08-3d.md §3.4
+
+### 3D-5. `dpr={[1, 2]}` が高い（優先度: 低）
+
+`[1, 1.5]` にすると塗り面積が約 44% 減る。matcap ベースの見た目なので劣化はほぼ分からない。
+
+### 3D-6. `<Canvas>` に `aria-hidden` が無い（優先度: 低）
+
+WebGL の中身はスクリーンリーダーから不可視。
+情報がテキストで別途出ている以上、Canvas は装飾扱いにして `aria-hidden="true"` + `tabIndex={-1}` にする。
+
+### 3D-7. WebGL フォールバックが無い（優先度: 低）
+
+`ErrorBoundary` が無いため、WebGL が使えない環境や GLB 取得失敗でクラッシュしうる。
+静止画へのフォールバックを用意する。→ 08-3d.md §6
+
+---
+
+## 6. 進め方の提案
 
 1 回の PR で全部やらない。以下の順で切ると差分が小さく、効果が大きい。
 
@@ -152,5 +218,6 @@ PWA では OS ダイアログが文脈から浮く。特に **記録の削除は
 | 4 | `ui/Field.tsx` を作り、モーダルのフォームから置換 | 段階的 | H1 |
 | 5 | カラートークン一本化（ドメイン単位） | 段階的 | M3 / H4 の残り |
 | 6 | `ConfirmDialog` / `Toast` を作り `window.confirm` を置換 | 段階的 | M5 |
+| 7 | 未使用 GLB の削除 + `frameloop` 制御 + 3D の reduced-motion | 3 ファイル | 3D-1 / 3D-3 / 3D-4 |
 
 各 PR で 06-checklist.md を通すこと。
