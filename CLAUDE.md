@@ -30,6 +30,7 @@ npm run build
 ## Design
 
 UI/UX rules live in `docs/design/`. Read them before building or changing any screen.
+This app is an iOS-home-screen PWA: Apple HIG is the platform baseline and wins when guidance conflicts.
 
 - `docs/design/02-design-system.md` — color, type, spacing, radius, elevation tokens. Do not invent new values.
 - `docs/design/03-components.md` — component contracts. Shared primitives belong in `src/components/ui/`.
@@ -38,5 +39,6 @@ UI/UX rules live in `docs/design/`. Read them before building or changing any sc
 - `docs/design/06-checklist.md` — run through this before committing UI changes.
 - `docs/design/07-audit-backlog.md` — known gaps; fix the ones in files you touch.
 - `docs/design/08-3d.md` — Three.js rules: asset budget, `frameloop` gating, reduced-motion, WebGL fallback.
+- `docs/design/09-apple-hig.md` — Apple HIG applied: 17pt/11pt type, 44pt targets, 12/24pt control spacing, sheets, alerts, Liquid Glass.
 
 Do not write raw hex colors in components — use the tokens.

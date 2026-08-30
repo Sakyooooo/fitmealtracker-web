@@ -1,6 +1,6 @@
 # FitMealTracker デザインガイド
 
-参考にした 6 つの UI/UX リソースを FitMealTracker の実装ルールに落とし込んだドキュメント群です。
+参考にした 7 つの UI/UX リソースを FitMealTracker の実装ルールに落とし込んだドキュメント群です。
 「毎回デザインを考え直さない」「実装の揺れを減らす」ことが目的で、
 新しい画面・コンポーネントを追加するときの参照元になります。
 
@@ -8,7 +8,7 @@
 
 | ファイル | 中身 | いつ読むか |
 |---|---|---|
-| [01-references.md](./01-references.md) | 参考 6 サイトの要約と使い分け | 引き出しが欲しいとき / インスピレーション探し |
+| [01-references.md](./01-references.md) | 参考 7 サイトの要約と使い分け | 引き出しが欲しいとき / インスピレーション探し |
 | [02-design-system.md](./02-design-system.md) | 色・タイポ・余白・角丸・影・レイアウトのトークン | 新しい画面を作る前に必ず |
 | [03-components.md](./03-components.md) | コンポーネントの契約（Button/Card/Modal/Form/Chart…） | UI を実装する直前 |
 | [04-motion.md](./04-motion.md) | アニメーション・インタラクション規約（60fps 原則） | 動きをつけるとき |
@@ -16,6 +16,7 @@
 | [06-checklist.md](./06-checklist.md) | 設計前 / 実装中 / PR 前のチェックリスト | コミット前に毎回 |
 | [07-audit-backlog.md](./07-audit-backlog.md) | 現コードベースの監査結果と改善バックログ | 改善タスクを選ぶとき |
 | [08-3d.md](./08-3d.md) | Three.js / WebGL の運用規約（予算・停止条件・a11y） | 3D を触るとき（運動タブのアバター、演出） |
+| [09-apple-hig.md](./09-apple-hig.md) | **Apple HIG の適用（最優先の規範）** | **設計前に必ず。数値や作法で迷ったとき** |
 
 スクリーンショットは [`screens/`](./screens/) に置いてあります（既存画面の見た目リファレンス）。
 
@@ -23,17 +24,18 @@
 
 ```
 1. 要件整理
-2. 設計       ← 02-design-system.md / 03-components.md でトークンとパターンを選ぶ
+2. 設計       ← 09-apple-hig.md で作法を確認 → 02 / 03 でトークンとパターンを選ぶ
                  06-checklist.md「設計前チェック」を通す
 3. 実装       ← 04-motion.md / 05-accessibility.md を横に置く
 4. テスト     ← 06-checklist.md「PR 前チェック」を通す
 ```
 
-## 3 行サマリ（迷ったらこれだけ）
+## 4 行サマリ（迷ったらこれだけ）
 
-1. **色・サイズ・角丸・余白は 02 のトークンから選ぶ。**新しい値を発明しない。
-2. **動きは transform / opacity のみ。**150〜300ms、`prefers-reduced-motion` を必ず尊重する。
-3. **押せるものは 44×44px 以上・focus-visible リングあり・aria-label あり。**
+1. **迷ったら Apple HIG に合わせる。**このアプリは iOS ホーム画面前提の PWA。
+2. **色・サイズ・角丸・余白は 02 のトークンから選ぶ。**新しい値を発明しない。
+3. **動きは transform / opacity のみ。**150〜300ms、`prefers-reduced-motion` を必ず尊重する。
+4. **押せるものは 44×44px 以上・周囲に余白・focus-visible リングあり・aria-label あり。**
 
 ## 参考サイト
 
@@ -43,3 +45,4 @@
 - [coss ui](https://coss.com/ui) — Cal.com のデザインシステム（Base UI + Tailwind、コピペ所有型）
 - [HeroUI](https://heroui.com/) — React Aria + Tailwind のアクセシブルなコンポーネントライブラリ
 - [ThreeUI](https://threeui.com/browse) — Three.js / WebGL コンポーネントのカタログ（ライブプレビュー + ソース）
+- **[Apple Human Interface Guidelines](https://developer.apple.com/jp/design/human-interface-guidelines) — プラットフォーム規範。他と矛盾したらこれを優先**
